@@ -54,6 +54,11 @@ dist-ssr/
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 
+# Playwright
+playwright-report/
+blob-report/
+test-results/
+
 # IDE
 .vscode/
 .idea/

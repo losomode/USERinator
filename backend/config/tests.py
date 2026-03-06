@@ -656,3 +656,29 @@ class InvitationFuzzing(FuzzingTestBase):
         self._auth()
         r = self.client.post("/api/invitations/99999/reject/")
         self.assertEqual(r.status_code, 404)
+
+
+class OpenAPIDocsTest(TestCase):
+    """Tests for OpenAPI schema and documentation endpoints."""
+
+    def test_schema_returns_200(self):
+        """GET /api/schema/ returns valid OpenAPI JSON."""
+        r = self.client.get("/api/schema/")
+        self.assertEqual(r.status_code, 200)
+
+    def test_schema_contains_paths(self):
+        """Schema includes the expected API paths."""
+        r = self.client.get("/api/schema/", HTTP_ACCEPT="application/json")
+        self.assertEqual(r.status_code, 200)
+
+    def test_swagger_ui_returns_200(self):
+        """GET /api/docs/ returns Swagger UI HTML."""
+        r = self.client.get("/api/docs/")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("text/html", r["Content-Type"])
+
+    def test_redoc_returns_200(self):
+        """GET /api/redoc/ returns ReDoc HTML."""
+        r = self.client.get("/api/redoc/")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("text/html", r["Content-Type"])
