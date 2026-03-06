@@ -1,0 +1,24 @@
+# Core framework
+Django>=6.0
+djangorestframework>=3.15
+djangorestframework-simplejwt>=5.4
+django-cors-headers>=4.6
+python-decouple>=3.8
+
+# Admin interface
+django-admin-interface>=0.28
+django-colorfield>=0.11
+
+# HTTP client (for AUTHinator integration)
+requests>=2.32
+
+# JWT handling
+PyJWT>=2.11
+
+# Testing
+pytest-django>=4.9
+coverage>=7.6
+
+# Code quality
+ruff>=0.8
+black>=24.0
