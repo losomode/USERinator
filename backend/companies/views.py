@@ -11,7 +11,7 @@ from companies.serializers import (
     CompanyListSerializer,
     CompanyUpdateSerializer,
 )
-from core.permissions import AdminOnly, CanViewCompanyScopedResource, ManagerOrHigher
+from core.permissions import AdminOnly, CanViewCompanyScopedResource, ManagerOrHigher, IsServiceAuthenticated
 from users.models import UserProfile
 from users.serializers import UserProfileListSerializer
 
@@ -37,7 +37,11 @@ class CompanyListCreateView(generics.ListCreateAPIView):
 
 
 class CompanyDetailView(generics.RetrieveUpdateAPIView):
-    """Get or update company details."""
+    """Get or update company details.
+    
+    Accepts either Bearer token (IsAuthenticated) or X-Service-Key header
+    for server-to-server calls.
+    """
 
     queryset = Company.objects.all()
 
@@ -50,11 +54,16 @@ class CompanyDetailView(generics.RetrieveUpdateAPIView):
         if self.request.method in ("PUT", "PATCH"):
             # ADMIN can edit all, MANAGER can edit own company
             return [IsAuthenticated(), ManagerOrHigher()]
-        # Everyone can view (but queryset filters by company)
-        return [IsAuthenticated()]
+        # View: authenticated users or service key
+        return [IsAuthenticated() | IsServiceAuthenticated()]
 
     def check_object_permissions(self, request, obj):
         super().check_object_permissions(request, obj)
+        
+        # Service key authentication bypasses company scoping (used for service-to-service calls)
+        if not hasattr(request.user, 'is_authenticated') or not request.user.is_authenticated:
+            return
+        
         role_level = getattr(request.user, "role_level", 0)
         
         # ADMIN can access any company
