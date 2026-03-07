@@ -311,7 +311,7 @@ class UserContextView(views.APIView):
         from django.core.cache import cache
         from users.serializers import UserContextSerializer
         
-        # Check cache first (5 minute TTL)
+        # Check cache first (10 second TTL to minimize stale data)
         cache_key = f"user_context_{user_id}"
         cached_data = cache.get(cache_key)
         if cached_data:
@@ -339,8 +339,8 @@ class UserContextView(views.APIView):
         )
         data['permissions'] = checker.get_permissions_dict()
         
-        # Cache for 5 minutes (300 seconds) on server side only
-        cache.set(cache_key, data, 300)
+        # Cache for 10 seconds only (minimize stale permission data)
+        cache.set(cache_key, data, 10)
         
         response = Response(data)
         # Prevent browser caching of context data
