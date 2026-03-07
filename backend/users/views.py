@@ -229,7 +229,12 @@ class UserProfileMeView(views.APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
         serializer = UserProfileDetailSerializer(profile, context={"request": request})
-        return Response(serializer.data)
+        response = Response(serializer.data)
+        # Prevent browser caching of user profiles
+        response['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        response['Pragma'] = 'no-cache'
+        response['Expires'] = '0'
+        return response
 
     def patch(self, request):
         profile = self._get_profile(request)
@@ -334,10 +339,15 @@ class UserContextView(views.APIView):
         )
         data['permissions'] = checker.get_permissions_dict()
         
-        # Cache for 5 minutes (300 seconds)
+        # Cache for 5 minutes (300 seconds) on server side only
         cache.set(cache_key, data, 300)
         
-        return Response(data)
+        response = Response(data)
+        # Prevent browser caching of context data
+        response['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        response['Pragma'] = 'no-cache'
+        response['Expires'] = '0'
+        return response
 
 
 class PreferencesMeView(views.APIView):
