@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { invitationApi } from '../api';
 import type { Invitation } from '../types';
+import { RoleGuard } from '../../../shared/permissions';
 
 export function InvitationReviewPage() {
   const [invitations, setInvitations] = useState<Invitation[]>([]);
@@ -30,9 +31,18 @@ export function InvitationReviewPage() {
   };
 
   return (
-    <div className="max-w-3xl">
-      <h2 className="mb-4 text-2xl font-bold">Review Invitations</h2>
-      {error && <div className="mb-4 text-red-600">{error}</div>}
+    <RoleGuard 
+      minRole="MANAGER"
+      fallback={
+        <div className="max-w-3xl">
+          <h2 className="mb-4 text-2xl font-bold">Review Invitations</h2>
+          <p className="text-gray-500">You need MANAGER or ADMIN role to review invitations.</p>
+        </div>
+      }
+    >
+      <div className="max-w-3xl">
+        <h2 className="mb-4 text-2xl font-bold">Review Invitations</h2>
+        {error && <div className="mb-4 text-red-600">{error}</div>}
 
       {invitations.length === 0 && !error && (
         <p className="text-gray-500">No pending invitations.</p>
@@ -83,5 +93,6 @@ export function InvitationReviewPage() {
         ))}
       </div>
     </div>
+    </RoleGuard>
   );
 }
