@@ -7,6 +7,7 @@ Idempotent — safe to run multiple times.
 from django.core.management.base import BaseCommand
 from companies.models import Company
 from users.models import UserProfile
+from roles.models import Role
 from permissions import PermissionChecker
 
 # Role level constants
@@ -129,6 +130,23 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         self.stdout.write('👥 Seeding USERinator demo data...')
+
+        # Create system roles
+        self.stdout.write('  Creating system roles...')
+        roles_data = [
+            {'role_name': 'ADMIN', 'role_level': ROLE_ADMIN, 'description': 'Platform administrator with full access', 'is_system_role': True},
+            {'role_name': 'MANAGER', 'role_level': ROLE_MANAGER, 'description': 'Company manager with elevated permissions', 'is_system_role': True},
+            {'role_name': 'MEMBER', 'role_level': ROLE_MEMBER, 'description': 'Standard company member', 'is_system_role': True},
+        ]
+        for role_data in roles_data:
+            role, created = Role.objects.update_or_create(
+                role_name=role_data['role_name'],
+                defaults=role_data
+            )
+            if created:
+                self.stdout.write(f'    ✓ {role.role_name} (level {role.role_level}) - created')
+            else:
+                self.stdout.write(f'    ✓ {role.role_name} (level {role.role_level}) - updated')
 
         # Create companies
         self.stdout.write('  Creating companies...')

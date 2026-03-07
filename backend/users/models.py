@@ -38,11 +38,13 @@ class UserProfile(models.Model):
     username = models.CharField(max_length=150, unique=True)
     email = models.EmailField()
 
-    # Company relationship
+    # Company relationship (null for platform admins)
     company = models.ForeignKey(
         "companies.Company",
         on_delete=models.PROTECT,
         related_name="user_profiles",
+        null=True,
+        blank=True,
     )
 
     # Profile data
