@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import apiClient, { setToken, clearToken, getToken } from '../api/client';
+import type { Permissions } from '../permissions/types';
 
 interface User {
   id: number;
@@ -8,6 +9,7 @@ interface User {
   role: string;
   role_level: number;
   company_id: number;
+  permissions?: Permissions;
 }
 
 interface AuthContextType {
@@ -32,8 +34,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     try {
-      const response = await apiClient.get<User>('/users/me/');
-      setUser(response.data);
+      // First get basic user info
+      const userResponse = await apiClient.get<User>('/users/me/');
+      const userData = userResponse.data;
+      
+      // Then fetch full context including permissions
+      try {
+        const contextResponse = await apiClient.get(`/users/${userData.id}/context/`);
+        // Merge context data (including permissions) with user data
+        setUser({ ...userData, ...contextResponse.data });
+      } catch {
+        // If context fetch fails, fall back to basic user data
+        setUser(userData);
+      }
     } catch {
       clearToken();
       setUser(null);
