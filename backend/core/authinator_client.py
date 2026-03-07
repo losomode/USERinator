@@ -49,21 +49,30 @@ class AuthinatorClient:
             if response.status_code == 200:
                 user_data = response.json()
 
+                # AUTHinator returns "customer" for the company entity
+                customer = user_data.get("customer") or user_data.get("company")
+
+                # Infer role_level from role name if not explicitly provided
+                role_level_map = {"ADMIN": 100, "MANAGER": 30, "MEMBER": 10}
+                role_name = user_data.get("role", "")
+                explicit_level = user_data.get("role_level")
+                role_level = (
+                    explicit_level
+                    if explicit_level is not None
+                    else role_level_map.get(role_name, 10)
+                )
+
                 user_info = {
                     "id": user_data.get("id"),
                     "username": user_data.get("username"),
                     "email": user_data.get("email", ""),
-                    "role": user_data.get("role", ""),
-                    "role_level": user_data.get("role_level", 10),
+                    "role": role_name,
+                    "role_level": role_level,
                     "company_id": (
-                        user_data.get("company", {}).get("id")
-                        if user_data.get("company")
-                        else None
+                        customer.get("id") if customer else None
                     ),
                     "company_name": (
-                        user_data.get("company", {}).get("name")
-                        if user_data.get("company")
-                        else None
+                        customer.get("name") if customer else None
                     ),
                     "is_verified": user_data.get("is_verified", False),
                     "is_active": user_data.get("is_active", True),

@@ -8,6 +8,7 @@ from users.views import (
     UserProfileListCreateView,
     UserProfileMeView,
     UserRoleView,
+    UserContextView,
     PreferencesMeView,
     health_check,
 )
@@ -20,6 +21,7 @@ urlpatterns = [
     path("batch/", UserProfileBatchView.as_view(), name="profile-batch"),
     path("preferences/me/", PreferencesMeView.as_view(), name="preferences-me"),
     path("<int:user_id>/role/", UserRoleView.as_view(), name="user-role"),
+    path("<int:user_id>/context/", UserContextView.as_view(), name="user-context"),
     path("<int:user_id>/", UserProfileDetailView.as_view(), name="profile-detail"),
     path("", UserProfileListCreateView.as_view(), name="profile-list"),
 ]

@@ -35,7 +35,7 @@ DEMO_COMPANIES = [
 
 DEMO_USERS = [
     # (user_id, username, email, company_idx, role_name, display_name, job_title)
-    (100, "admin", "admin@acme.example.com", 0, "ADMIN", "Alice Admin", "CTO"),
+    (1, "admin", "admin@example.com", 0, "ADMIN", "Alice Admin", "System Administrator"),
     (
         101,
         "bob.manager",

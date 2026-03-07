@@ -487,6 +487,8 @@ class UserProfileAPITest(APITestCase):
         self.assertFalse(self.member_profile.is_active)
 
     # --- Coverage: Me view 404 branches (lines 117-118, 128-129) ---
+    # With auto-provisioning, a user with company_id will get a profile
+    # created automatically. To hit the 404 path, use company_id=None.
 
     @patch("core.authentication.authinator_client")
     def test_me_get_no_profile(self, mock_client):
@@ -496,8 +498,8 @@ class UserProfileAPITest(APITestCase):
             "email": "ghost@t.com",
             "role": "MEMBER",
             "role_level": 10,
-            "company_id": self.company.id,
-            "company_name": "TestCo",
+            "company_id": None,
+            "company_name": None,
             "is_verified": True,
             "is_active": True,
         }
@@ -513,8 +515,8 @@ class UserProfileAPITest(APITestCase):
             "email": "ghost@t.com",
             "role": "MEMBER",
             "role_level": 10,
-            "company_id": self.company.id,
-            "company_name": "TestCo",
+            "company_id": None,
+            "company_name": None,
             "is_verified": True,
             "is_active": True,
         }
@@ -586,6 +588,7 @@ class UserProfileAPITest(APITestCase):
         self.assertEqual(response.status_code, 404)
 
     # --- Coverage: Preferences 404 branches (lines 186-187, 197-198) ---
+    # With auto-provisioning, company_id=None prevents profile creation.
 
     @patch("core.authentication.authinator_client")
     def test_preferences_get_no_profile(self, mock_client):
@@ -595,8 +598,8 @@ class UserProfileAPITest(APITestCase):
             "email": "ghost@t.com",
             "role": "MEMBER",
             "role_level": 10,
-            "company_id": self.company.id,
-            "company_name": "TestCo",
+            "company_id": None,
+            "company_name": None,
             "is_verified": True,
             "is_active": True,
         }
@@ -612,8 +615,8 @@ class UserProfileAPITest(APITestCase):
             "email": "ghost@t.com",
             "role": "MEMBER",
             "role_level": 10,
-            "company_id": self.company.id,
-            "company_name": "TestCo",
+            "company_id": None,
+            "company_name": None,
             "is_verified": True,
             "is_active": True,
         }

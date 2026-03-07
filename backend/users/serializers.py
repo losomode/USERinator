@@ -70,7 +70,7 @@ class UserProfileUpdateSerializer(serializers.ModelSerializer):
 
 
 class UserProfileAdminUpdateSerializer(serializers.ModelSerializer):
-    """Serializer for admin updates (includes role fields)."""
+    """Serializer for admin updates (includes role + company fields)."""
 
     class Meta:
         model = UserProfile
@@ -82,6 +82,7 @@ class UserProfileAdminUpdateSerializer(serializers.ModelSerializer):
             "job_title",
             "department",
             "location",
+            "company",
             "role_name",
             "role_level",
             "timezone",
@@ -118,10 +119,32 @@ class UserProfileCreateSerializer(serializers.ModelSerializer):
             "role_level",
         ]
 
+    def validate_company(self, value):
+        """MANAGER can only create users for their own company."""
+        request = self.context.get("request")
+        if request:
+            user_role_level = getattr(request.user, "role_level", 0)
+            user_company = getattr(request.user, "company_id_remote", None)
+            
+            # MANAGER can only create users for their own company
+            if user_role_level < 100 and value.id != user_company:
+                raise serializers.ValidationError(
+                    "You can only create users for your own company."
+                )
+        return value
+
     def validate_role_level(self, value):
         request = self.context.get("request")
         if request:
             user_role_level = getattr(request.user, "role_level", 0)
+            
+            # MANAGER (30) can only create MEMBER (10)
+            if user_role_level == 30 and value != 10:
+                raise serializers.ValidationError(
+                    "Managers can only create MEMBER-level users (role_level=10)."
+                )
+            
+            # General rule: cannot assign higher than own level
             if value > user_role_level:
                 raise serializers.ValidationError(
                     "Cannot assign a role level higher than your own."
@@ -135,6 +158,31 @@ class UserRoleSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserProfile
         fields = ["user_id", "role_name", "role_level", "company"]
+
+
+class UserContextSerializer(serializers.ModelSerializer):
+    """Complete user context for service authorization.
+    
+    Returns all data needed for authorization decisions:
+    - company_id, company_name for company-scoped queries
+    - role_name, role_level for permission checks
+    - username, email for audit logging
+    """
+    company_id = serializers.IntegerField(source='company.id', read_only=True)
+    company_name = serializers.CharField(source='company.name', read_only=True)
+
+    class Meta:
+        model = UserProfile
+        fields = [
+            "user_id",
+            "username",
+            "email",
+            "company_id",
+            "company_name",
+            "role_name",
+            "role_level",
+            "is_active",
+        ]
 
 
 class PreferencesSerializer(serializers.ModelSerializer):

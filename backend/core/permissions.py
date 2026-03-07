@@ -90,3 +90,51 @@ class CompanyScopedMixin:
             return queryset.none()
 
         return queryset.filter(**{self.company_field: company_id})
+
+
+class AdminOnly(BasePermission):
+    """Require ADMIN role (level >= 100).
+    
+    Used for actions that only platform administrators can perform:
+    - Creating companies
+    - Deleting users
+    - Changing user roles
+    - Editing RMAs, POs, Orders, Deliveries
+    - Managing Items
+    """
+
+    def has_permission(self, request, view):
+        return bool(
+            request.user
+            and request.user.is_authenticated
+            and getattr(request.user, "role_level", 0) >= 100
+        )
+
+
+class ManagerOrHigher(BasePermission):
+    """Require MANAGER role or higher (level >= 30).
+    
+    Used for actions that managers and admins can perform:
+    - Editing company info (with company scoping)
+    - Editing user profiles (with company scoping)
+    - Approving invitations (with company scoping)
+    - Deactivating users (with company scoping)
+    """
+
+    def has_permission(self, request, view):
+        return bool(
+            request.user
+            and request.user.is_authenticated
+            and getattr(request.user, "role_level", 0) >= 30
+        )
+
+
+class CanViewCompanyScopedResource(BasePermission):
+    """User can view resources scoped to their company.
+    
+    All authenticated users can view, but queryset filtering
+    should limit to own company (except ADMIN sees all).
+    """
+
+    def has_permission(self, request, view):
+        return bool(request.user and request.user.is_authenticated)

@@ -1,13 +1,17 @@
 """User profile views for USERinator."""
 
+import logging
+
 from django.db.models import Q
 from rest_framework import generics, status, views
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
-from core.permissions import CompanyScopedMixin, IsCompanyAdmin, IsServiceAuthenticated
+from companies.models import Company
+from core.permissions import AdminOnly, CompanyScopedMixin, ManagerOrHigher, IsServiceAuthenticated
 from users.models import UserProfile
+from permissions import PermissionChecker
 from users.serializers import (
     PreferencesSerializer,
     UserProfileAdminUpdateSerializer,
@@ -17,6 +21,91 @@ from users.serializers import (
     UserProfileUpdateSerializer,
     UserRoleSerializer,
 )
+
+logger = logging.getLogger(__name__)
+
+# Map AUTHinator role names → USERinator role levels
+_ROLE_LEVEL_MAP = {"ADMIN": 100, "MANAGER": 30, "MEMBER": 10}
+
+
+def _auto_provision_profile(user):
+    """
+    Auto-create a UserProfile (and Company if needed) for an authenticated
+    user that doesn't have one yet.  Uses AUTHinator data attached to the
+    user instance by AuthinatorJWTAuthentication.
+
+    If a profile already exists with the same username (e.g. from demo data
+    with a different user_id), adopt it by updating its user_id.
+
+    Returns the new/adopted UserProfile or None if provisioning isn't possible.
+    """
+    company_id = getattr(user, "company_id_remote", None)
+    company_name = getattr(user, "company_name", None)
+
+    if company_id is None:
+        return None
+
+    # Get or create a matching Company record
+    company, _ = Company.objects.get_or_create(
+        id=company_id,
+        defaults={"name": company_name or f"Company {company_id}"},
+    )
+
+    role = getattr(user, "role", "MEMBER") or "MEMBER"
+    role_level = _ROLE_LEVEL_MAP.get(role, 10)
+
+    # Check for an existing profile with this username (demo data scenario
+    # where demo user_id != real AUTHinator id). Since user_id is the PK,
+    # we must delete the old row and re-create with the correct PK.
+    try:
+        existing = UserProfile.objects.select_related("company").get(
+            username=user.username,
+        )
+        if existing.user_id != user.id:
+            old_company = existing.company
+            old_display = existing.display_name
+            old_job = existing.job_title
+            old_dept = existing.department
+            old_loc = existing.location
+            old_phone = existing.phone
+            old_bio = existing.bio
+            existing.delete()
+            profile = UserProfile.objects.create(
+                user_id=user.id,
+                username=user.username,
+                email=getattr(user, "email", "") or "",
+                company=old_company,
+                display_name=old_display,
+                job_title=old_job,
+                department=old_dept,
+                location=old_loc,
+                phone=old_phone,
+                bio=old_bio,
+                role_name=role,
+                role_level=role_level,
+            )
+            logger.info(
+                "Adopted existing profile '%s' for AUTHinator user id=%s",
+                user.username,
+                user.id,
+            )
+            return profile
+        # user_id already matches — just return the existing profile
+        return existing
+    except UserProfile.DoesNotExist:
+        pass
+
+    profile = UserProfile.objects.create(
+        user_id=user.id,
+        username=user.username,
+        email=getattr(user, "email", ""),
+        company=company,
+        display_name=getattr(user, "display_name", None) or user.username,
+        role_name=role,
+        role_level=role_level,
+    )
+    logger.info("Auto-provisioned profile for user %s (id=%s)", user.username, user.id)
+    return profile
 
 
 class UserProfileListCreateView(CompanyScopedMixin, generics.ListCreateAPIView):
@@ -29,7 +118,8 @@ class UserProfileListCreateView(CompanyScopedMixin, generics.ListCreateAPIView):
 
     def get_permissions(self):
         if self.request.method == "POST":
-            return [IsAuthenticated(), IsCompanyAdmin()]
+            # ADMIN can create any role, MANAGER can create MEMBER only
+            return [IsAuthenticated(), ManagerOrHigher()]
         return [IsAuthenticated()]
 
     def get_queryset(self):
@@ -68,53 +158,72 @@ class UserProfileDetailView(generics.RetrieveUpdateDestroyAPIView):
 
     def get_permissions(self):
         if self.request.method == "DELETE":
-            return [IsAuthenticated(), IsCompanyAdmin()]
+            # Only ADMIN can delete, MANAGER can deactivate via PermissionChecker
+            return [IsAuthenticated(), AdminOnly()]
         return [IsAuthenticated()]
 
     def get_queryset(self):
         return UserProfile.objects.select_related("company")
 
     def perform_destroy(self, instance):
-        """Soft delete: deactivate instead of hard delete."""
+        """Soft delete: deactivate instead of hard delete.
+        
+        Note: Only ADMIN can delete users. For MANAGER deactivation,
+        check permissions using PermissionChecker.can_deactivate_user().
+        """
         instance.is_active = False
         instance.save(update_fields=["is_active"])
 
     def check_object_permissions(self, request, obj):
-        """Users can view/edit own profile; admins can manage company profiles."""
+        """Users can view/edit own profile; ADMIN/MANAGER can manage company profiles."""
         super().check_object_permissions(request, obj)
         user = request.user
         role_level = getattr(user, "role_level", 0)
+        user_company = getattr(user, "company_id_remote", None)
 
+        # ADMIN has full access to all profiles
         if role_level >= 100:
-            return  # Platform admin: full access
+            return
 
+        # MANAGER can view/edit users in own company
         if role_level >= 30:
-            user_company = getattr(user, "company_id_remote", None)
             if obj.company_id != user_company:
                 self.permission_denied(request)
             return
 
-        # Regular users can only access their own profile
+        # MEMBER can only view profiles in same company, edit own profile
         if request.method in ("GET", "HEAD", "OPTIONS"):
             # Allow viewing profiles in same company
-            user_company = getattr(user, "company_id_remote", None)
             if obj.company_id != user_company:
                 self.permission_denied(request)
         elif obj.user_id != user.id:
+            # Can only edit own profile
             self.permission_denied(request)
 
 
 class UserProfileMeView(views.APIView):
-    """GET/PATCH own profile shortcut."""
+    """GET/PATCH own profile shortcut.  Auto-creates profile on first access."""
 
     permission_classes = [IsAuthenticated]
 
-    def get(self, request):
+    def _get_profile(self, request):
+        """Return the caller's profile, auto-provisioning if needed."""
         try:
-            profile = UserProfile.objects.select_related("company").get(
+            return UserProfile.objects.select_related("company").get(
                 user_id=request.user.id
             )
         except UserProfile.DoesNotExist:
+            profile = _auto_provision_profile(request.user)
+            if profile is not None:
+                # Re-fetch with company join
+                return UserProfile.objects.select_related("company").get(
+                    user_id=request.user.id
+                )
+            return None
+
+    def get(self, request):
+        profile = self._get_profile(request)
+        if profile is None:
             return Response(
                 {"detail": "Profile not found."},
                 status=status.HTTP_404_NOT_FOUND,
@@ -123,9 +232,8 @@ class UserProfileMeView(views.APIView):
         return Response(serializer.data)
 
     def patch(self, request):
-        try:
-            profile = UserProfile.objects.get(user_id=request.user.id)
-        except UserProfile.DoesNotExist:
+        profile = self._get_profile(request)
+        if profile is None:
             return Response(
                 {"detail": "Profile not found."},
                 status=status.HTTP_404_NOT_FOUND,
@@ -179,15 +287,73 @@ class UserRoleView(views.APIView):
         return Response(serializer.data)
 
 
+class UserContextView(views.APIView):
+    """Complete user context for service authorization.
+    
+    Returns company_id, company_name, role_name, role_level for the specified user.
+    
+    This endpoint is used by all services (RMAinator, FULFILinator, etc.) to
+    get authorization context after validating the JWT. Response is cached for
+    5 minutes to minimize database queries.
+    
+    Accepts either Bearer token (IsAuthenticated) or X-Service-Key header for
+    server-to-server calls.
+    """
+
+    permission_classes = [IsAuthenticated | IsServiceAuthenticated]
+
+    def get(self, request, user_id):
+        from django.core.cache import cache
+        from users.serializers import UserContextSerializer
+        
+        # Check cache first (5 minute TTL)
+        cache_key = f"user_context_{user_id}"
+        cached_data = cache.get(cache_key)
+        if cached_data:
+            return Response(cached_data)
+        
+        # Fetch from database
+        try:
+            profile = UserProfile.objects.select_related("company").get(
+                user_id=user_id, is_active=True
+            )
+        except UserProfile.DoesNotExist:
+            return Response(
+                {"detail": "User not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        
+        serializer = UserContextSerializer(profile)
+        data = serializer.data
+        
+        # Add permissions for frontend
+        checker = PermissionChecker(
+            user_id=profile.user_id,
+            role_level=profile.role_level,
+            company_id=profile.company_id if profile.company else None
+        )
+        data['permissions'] = checker.get_permissions_dict()
+        
+        # Cache for 5 minutes (300 seconds)
+        cache.set(cache_key, data, 300)
+        
+        return Response(data)
+
+
 class PreferencesMeView(views.APIView):
-    """GET/PATCH own preferences."""
+    """GET/PATCH own preferences.  Reuses auto-provisioning from UserProfileMeView."""
 
     permission_classes = [IsAuthenticated]
 
-    def get(self, request):
+    def _get_profile(self, request):
         try:
-            profile = UserProfile.objects.get(user_id=request.user.id)
+            return UserProfile.objects.get(user_id=request.user.id)
         except UserProfile.DoesNotExist:
+            return _auto_provision_profile(request.user)
+
+    def get(self, request):
+        profile = self._get_profile(request)
+        if profile is None:
             return Response(
                 {"detail": "Profile not found."},
                 status=status.HTTP_404_NOT_FOUND,
@@ -196,9 +362,8 @@ class PreferencesMeView(views.APIView):
         return Response(serializer.data)
 
     def patch(self, request):
-        try:
-            profile = UserProfile.objects.get(user_id=request.user.id)
-        except UserProfile.DoesNotExist:
+        profile = self._get_profile(request)
+        if profile is None:
             return Response(
                 {"detail": "Profile not found."},
                 status=status.HTTP_404_NOT_FOUND,

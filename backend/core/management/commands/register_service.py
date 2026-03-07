@@ -19,6 +19,7 @@ class Command(BaseCommand):
             "base_url": "http://localhost:8004",
             "api_prefix": "/api/users",
             "ui_url": "http://localhost:8080/users",
+            "health_url": "http://localhost:8004/api/users/health/",
             "icon": "👤",
             "service_key": settings.SERVICE_REGISTRATION_KEY,
         }
@@ -28,6 +29,7 @@ class Command(BaseCommand):
             scheme = settings.DEPLOY_SCHEME
             domain = settings.DEPLOY_DOMAIN
             service_data["ui_url"] = f"{scheme}://{domain}/users"
+            service_data["health_url"] = f"{scheme}://{domain}/api/users/health/"
 
         try:
             response = requests.post(

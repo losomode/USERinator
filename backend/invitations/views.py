@@ -9,7 +9,7 @@ from rest_framework import generics, status, views
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from core.permissions import CompanyScopedMixin, IsCompanyAdmin
+from core.permissions import CompanyScopedMixin, ManagerOrHigher
 from invitations.models import UserInvitation
 from invitations.serializers import (
     InvitationCreateSerializer,
@@ -28,7 +28,8 @@ class InvitationListCreateView(CompanyScopedMixin, generics.ListCreateAPIView):
 
     def get_permissions(self):
         if self.request.method == "GET":
-            return [IsAuthenticated(), IsCompanyAdmin()]
+            # Only MANAGER+ can list invitations
+            return [IsAuthenticated(), ManagerOrHigher()]
         return [IsAuthenticated()]
 
     def get_queryset(self):
@@ -49,9 +50,9 @@ class InvitationDetailView(generics.RetrieveAPIView):
 
 
 class InvitationApproveView(views.APIView):
-    """Approve a pending invitation (company admin)."""
+    """Approve a pending invitation (MANAGER or ADMIN for own company)."""
 
-    permission_classes = [IsAuthenticated, IsCompanyAdmin]
+    permission_classes = [IsAuthenticated, ManagerOrHigher]
 
     def post(self, request, pk):
         try:
@@ -60,6 +61,15 @@ class InvitationApproveView(views.APIView):
             return Response(
                 {"detail": "Invitation not found."},
                 status=status.HTTP_404_NOT_FOUND,
+            )
+        
+        # Check company-scoped permissions (MANAGER can only approve for own company)
+        role_level = getattr(request.user, "role_level", 0)
+        user_company = getattr(request.user, "company_id_remote", None)
+        if role_level < 100 and invitation.company_id != user_company:
+            return Response(
+                {"detail": "You can only approve invitations for your own company."},
+                status=status.HTTP_403_FORBIDDEN,
             )
 
         if invitation.status != UserInvitation.Status.PENDING:
@@ -95,9 +105,9 @@ class InvitationApproveView(views.APIView):
 
 
 class InvitationRejectView(views.APIView):
-    """Reject a pending invitation (company admin)."""
+    """Reject a pending invitation (MANAGER or ADMIN for own company)."""
 
-    permission_classes = [IsAuthenticated, IsCompanyAdmin]
+    permission_classes = [IsAuthenticated, ManagerOrHigher]
 
     def post(self, request, pk):
         try:
@@ -106,6 +116,15 @@ class InvitationRejectView(views.APIView):
             return Response(
                 {"detail": "Invitation not found."},
                 status=status.HTTP_404_NOT_FOUND,
+            )
+        
+        # Check company-scoped permissions (MANAGER can only reject for own company)
+        role_level = getattr(request.user, "role_level", 0)
+        user_company = getattr(request.user, "company_id_remote", None)
+        if role_level < 100 and invitation.company_id != user_company:
+            return Response(
+                {"detail": "You can only reject invitations for your own company."},
+                status=status.HTTP_403_FORBIDDEN,
             )
 
         if invitation.status != UserInvitation.Status.PENDING:
