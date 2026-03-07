@@ -1,12 +1,18 @@
 import React from 'react';
 import { usePermissions } from './usePermissions';
-import type { Permissions } from './types';
+
+type ResourceType = 'company' | 'user' | 'invitation' | 'rma' | 'item' | 'po' | 'order' | 'delivery';
 
 interface PermissionGuardProps {
   /**
-   * Permission key to check (e.g., 'can_edit_company')
+   * Resource type (e.g., 'company', 'user', 'rma')
    */
-  permission: keyof Permissions;
+  resource: ResourceType;
+  
+  /**
+   * Permission action (e.g., 'can_edit', 'can_create')
+   */
+  action: string;
   
   /**
    * Content to render if user has permission
@@ -24,20 +30,24 @@ interface PermissionGuardProps {
  * 
  * Usage:
  * ```tsx
- * <PermissionGuard permission="can_edit_company">
+ * <PermissionGuard resource="company" action="can_edit_own">
  *   <EditButton />
  * </PermissionGuard>
  * 
  * // With fallback
- * <PermissionGuard permission="can_delete_user" fallback={<ViewOnlyBadge />}>
+ * <PermissionGuard resource="user" action="can_delete" fallback={<ViewOnlyBadge />}>
  *   <DeleteButton />
  * </PermissionGuard>
  * ```
  */
-export function PermissionGuard({ permission, children, fallback = null }: PermissionGuardProps) {
+export function PermissionGuard({ resource, action, children, fallback = null }: PermissionGuardProps) {
   const permissions = usePermissions();
   
-  if (!permissions[permission]) {
+  // Access nested permission (e.g., permissions.company.can_edit_own)
+  const resourcePerms = permissions[resource] as Record<string, boolean>;
+  const hasPermission = resourcePerms?.[action] ?? false;
+  
+  if (!hasPermission) {
     return <>{fallback}</>;
   }
   

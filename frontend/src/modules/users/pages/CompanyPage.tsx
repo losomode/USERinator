@@ -19,7 +19,7 @@ export function CompanyPage() {
     <div className="max-w-2xl">
       <div className="mb-4 flex items-center justify-between">
         <h2 className="text-2xl font-bold">{company.name}</h2>
-        <PermissionGuard permission="can_edit_company">
+        <PermissionGuard resource="company" action="can_edit_own">
           <Link to="/company/edit" className="rounded bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700">
             Edit Company
           </Link>

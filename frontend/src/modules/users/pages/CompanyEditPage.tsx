@@ -63,7 +63,8 @@ export function CompanyEditPage() {
 
   return (
     <PermissionGuard 
-      permission="can_edit_company"
+      resource="company"
+      action="can_edit_own"
       fallback={
         <div className="max-w-2xl">
           <h2 className="mb-4 text-2xl font-bold">Edit Company</h2>
