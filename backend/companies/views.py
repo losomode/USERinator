@@ -11,7 +11,7 @@ from companies.serializers import (
     CompanyListSerializer,
     CompanyUpdateSerializer,
 )
-from core.permissions import AdminOnly, CanViewCompanyScopedResource, ManagerOrHigher, IsServiceAuthenticated
+from core.permissions import AdminOnly, CanViewCompanyScopedResource, ManagerOrHigher, IsAuthenticatedOrServiceKey
 from users.models import UserProfile
 from users.serializers import UserProfileListSerializer
 
@@ -55,7 +55,7 @@ class CompanyDetailView(generics.RetrieveUpdateAPIView):
             # ADMIN can edit all, MANAGER can edit own company
             return [IsAuthenticated(), ManagerOrHigher()]
         # View: authenticated users or service key
-        return [IsAuthenticated() | IsServiceAuthenticated()]
+        return [IsAuthenticatedOrServiceKey()]
 
     def check_object_permissions(self, request, obj):
         super().check_object_permissions(request, obj)

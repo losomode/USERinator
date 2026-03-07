@@ -22,6 +22,24 @@ class IsServiceAuthenticated(BasePermission):
         return bool(key and key == expected)
 
 
+class IsAuthenticatedOrServiceKey(BasePermission):
+    """Allow access if user is authenticated OR request has valid service key.
+    
+    This allows both user requests (with JWT) and service-to-service requests
+    (with X-Service-Key header) to access the same endpoint.
+    """
+
+    def has_permission(self, request, view):
+        # Check if user is authenticated
+        if request.user and request.user.is_authenticated:
+            return True
+        
+        # Check if service key is valid
+        key = request.META.get("HTTP_X_SERVICE_KEY", "")
+        expected = getattr(settings, "INTERNAL_SERVICE_KEY", "")
+        return bool(key and key == expected)
+
+
 class IsCompanyAdmin(BasePermission):
     """User must be company admin or higher (role_level >= 30)."""
 
