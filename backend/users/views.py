@@ -308,16 +308,9 @@ class UserContextView(views.APIView):
     permission_classes = [IsAuthenticated | IsServiceAuthenticated]
 
     def get(self, request, user_id):
-        from django.core.cache import cache
         from users.serializers import UserContextSerializer
         
-        # Check cache first (10 second TTL to minimize stale data)
-        cache_key = f"user_context_{user_id}"
-        cached_data = cache.get(cache_key)
-        if cached_data:
-            return Response(cached_data)
-        
-        # Fetch from database
+        # Fetch from database (no caching - user context must be real-time)
         try:
             profile = UserProfile.objects.select_related("company").get(
                 user_id=user_id, is_active=True
@@ -338,9 +331,6 @@ class UserContextView(views.APIView):
             company_id=profile.company_id if profile.company else None
         )
         data['permissions'] = checker.get_permissions_dict()
-        
-        # Cache for 10 seconds only (minimize stale permission data)
-        cache.set(cache_key, data, 10)
         
         response = Response(data)
         # Prevent browser caching of context data
