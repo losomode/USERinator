@@ -14,6 +14,20 @@ USERinator is the authoritative source for user profiles, companies/organization
 
 ## Quick Start
 
+### Platform Mode (Recommended)
+
+If you're using the [Inator Platform](https://github.com/losomode/inator):
+
+```bash
+# From the platform root (inator/)
+task setup           # Sets up all inators including USERinator
+task start:all       # Starts all services + unified frontend + gateway
+
+# Access at http://localhost:8080
+```
+
+### Standalone Mode
+
 ```bash
 # Install backend dependencies
 task backend:install
@@ -34,6 +48,23 @@ task backend:dev
 task frontend:install
 task frontend:dev
 ```
+
+### Demo Database
+
+The Inator Platform provides a complete demo database with realistic company and user data. See the [Demo Database Guide](https://github.com/losomode/inator/blob/main/docs/DEMO_DATABASE.md) for full details.
+
+```bash
+# From the platform root (inator/)
+task setup:demodb        # Build demo databases
+task demodb:activate     # Activate demo data
+task restart:all         # Restart all services
+```
+
+**Demo data includes:**
+- 4 companies: Acme Corporation, Globex Industries, Initech LLC, Wayne Enterprises
+- 12 user profiles with different roles (2 admins, 4 managers, 6 members)
+- Complete role hierarchy (ADMIN=100, MANAGER=30, MEMBER=10)
+- Company associations demonstrating RBAC filtering
 
 ## Available Tasks
 
@@ -86,11 +117,32 @@ All endpoints require Bearer token authentication via AUTHinator (except health 
 
 Roles use numeric levels for permission comparison:
 
-- **ADMIN** (100) — Platform administrator, full access
-- **MANAGER** (30) — Company manager, team management
-- **MEMBER** (10) — Standard company member
+- **ADMIN** (100) — Platform administrator, full access across all companies
+- **MANAGER** (30) — Company manager, can manage team and edit company data
+- **MEMBER** (10) — Standard company member, read-only access to company data
 
 Custom roles can be created by platform admins with any level 1-99.
+
+### RBAC (Role-Based Access Control)
+
+USERinator enforces company-scoped data access:
+
+- **Platform admins** (no company affiliation):
+  - View and manage all users across all companies
+  - Create and manage companies
+  - Full access to all profiles and preferences
+
+- **Company users** (managers and members):
+  - View only users within their own company
+  - Cannot see other companies' data
+  - Company field is immutable after creation (prevents company-hopping)
+
+- **Permission levels**:
+  - ADMIN (100): Can edit any user profile, manage companies
+  - MANAGER (30): Can edit profiles within their company
+  - MEMBER (10): Can only edit their own profile
+
+See the [Demo Database Guide](https://github.com/losomode/inator/blob/main/docs/DEMO_DATABASE.md) for examples of RBAC in action.
 
 ## Management Commands
 
