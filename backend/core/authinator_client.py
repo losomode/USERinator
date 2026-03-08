@@ -32,12 +32,8 @@ class AuthinatorClient:
             dict with user info (id, username, email, role, role_level, etc.)
             or None if token is invalid.
         """
-        # Check cache first (5 minute TTL)
-        cache_key = f"authinator_user_{token[:20]}"
-        cached_user = cache.get(cache_key)
-        if cached_user:
-            return cached_user
-
+        # No caching - tokens must be validated fresh to avoid stale user data
+        # after logout/login cycles
         try:
             response = requests.get(
                 f"{self.api_url}me/",
@@ -78,7 +74,6 @@ class AuthinatorClient:
                     "is_active": user_data.get("is_active", True),
                 }
 
-                cache.set(cache_key, user_info, 300)  # 5 minutes
                 return user_info
             else:
                 logger.warning(
