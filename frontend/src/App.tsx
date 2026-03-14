@@ -1,57 +1,192 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider } from './shared/auth/AuthProvider';
-import { ProtectedRoute } from './shared/auth/ProtectedRoute';
-import { Layout, type NavItem } from './shared/layout/Layout';
-import { ProfilePage } from './modules/users/pages/ProfilePage';
-import { ProfileEditPage } from './modules/users/pages/ProfileEditPage';
-import { UserListPage } from './modules/users/pages/UserListPage';
-import { CompanyPage } from './modules/users/pages/CompanyPage';
-import { CompanyEditPage } from './modules/users/pages/CompanyEditPage';
-import { InvitationRequestPage } from './modules/users/pages/InvitationRequestPage';
-import { InvitationReviewPage } from './modules/users/pages/InvitationReviewPage';
-import { PreferencesPage } from './modules/users/pages/PreferencesPage';
+import { AuthProvider, useAuth } from '@inator/shared/auth/AuthProvider';
+import { ProtectedRoute } from '@inator/shared/auth/ProtectedRoute';
+import { Layout } from '@inator/shared/layout/Layout';
+import type { NavItem } from '@inator/shared/types';
+import { UserList } from './pages/UserList';
+import { UserEditPage } from './pages/UserEditPage';
+import { ProfilePage } from './pages/ProfilePage';
+import { ProfileEditPage } from './pages/ProfileEditPage';
+import { PreferencesPage } from './pages/PreferencesPage';
+import { CompanyPage } from './pages/CompanyPage';
+import { CompanyEditPage } from './pages/CompanyEditPage';
+import { CompanyListPage } from './pages/CompanyListPage';
+import { CompanyCreatePage } from './pages/CompanyCreatePage';
+import { InvitationRequestPage } from './pages/InvitationRequestPage';
+import { InvitationReviewPage } from './pages/InvitationReviewPage';
 
-const navItems: NavItem[] = [
-  { label: 'My Profile', path: '/profile' },
-  { label: 'Users', path: '/users' },
-  { label: 'Company', path: '/company' },
-  { label: 'Invitations', path: '/invitations' },
-  { label: 'Review Invitations', path: '/invitations/review', adminOnly: true },
-  { label: 'Preferences', path: '/preferences' },
+const NAV_ITEMS: NavItem[] = [
+  { path: '/profile', label: '👤 My Profile' },
+  { path: '/preferences', label: '⚙️ Preferences' },
+  { path: '/company', label: '🏢 My Company' },
+  { path: '/', label: '👥 All Users', adminOnly: true },
+  { path: '/companies', label: '🏗️ Companies', adminOnly: true },
+  { path: '/invitations', label: '📨 Invitations', adminOnly: true },
+  { path: '/invitations/review', label: '📝 Review Invitations', adminOnly: true },
 ];
 
-function AppRoutes() {
+/** Root route: admins see user list, non-admins redirect to their profile. */
+function AdminOrProfile(): React.JSX.Element {
+  const { isAdmin } = useAuth();
+  if (!isAdmin) {
+    return <Navigate to="/profile" replace />;
+  }
   return (
-    <Layout title="USERinator" subtitle="User Management" navItems={navItems}>
-      <Routes>
-        <Route path="/profile" element={<ProfilePage />} />
-        <Route path="/profile/edit" element={<ProfileEditPage />} />
-        <Route path="/users" element={<UserListPage />} />
-        <Route path="/company" element={<CompanyPage />} />
-        <Route path="/company/edit" element={<CompanyEditPage />} />
-        <Route path="/invitations" element={<InvitationRequestPage />} />
-        <Route path="/invitations/review" element={<InvitationReviewPage />} />
-        <Route path="/preferences" element={<PreferencesPage />} />
-        <Route path="*" element={<Navigate to="/profile" replace />} />
-      </Routes>
+    <Layout title="USERinator" navItems={NAV_ITEMS}>
+      <UserList />
     </Layout>
   );
 }
 
-export default function App() {
+/**
+ * USERinator frontend — manages user profiles, companies, and invitations.
+ * Served under /users via Caddy reverse proxy.
+ */
+export default function App(): React.JSX.Element {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename="/users">
       <AuthProvider>
         <Routes>
-          <Route path="/login" element={<div className="flex h-screen items-center justify-center"><p className="text-gray-500">Redirecting to SSO...</p></div>} />
+          {/* Profile */}
           <Route
-            path="/*"
+            path="/profile"
             element={
               <ProtectedRoute>
-                <AppRoutes />
+                <Layout title="USERinator" navItems={NAV_ITEMS}>
+                  <ProfilePage />
+                </Layout>
               </ProtectedRoute>
             }
           />
+          <Route
+            path="/profile/edit"
+            element={
+              <ProtectedRoute>
+                <Layout title="USERinator" navItems={NAV_ITEMS}>
+                  <ProfileEditPage />
+                </Layout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/preferences"
+            element={
+              <ProtectedRoute>
+                <Layout title="USERinator" navItems={NAV_ITEMS}>
+                  <PreferencesPage />
+                </Layout>
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Company (own) */}
+          <Route
+            path="/company"
+            element={
+              <ProtectedRoute>
+                <Layout title="USERinator" navItems={NAV_ITEMS}>
+                  <CompanyPage />
+                </Layout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/company/edit"
+            element={
+              <ProtectedRoute>
+                <Layout title="USERinator" navItems={NAV_ITEMS}>
+                  <CompanyEditPage />
+                </Layout>
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Root: admins see user list, others go to profile */}
+          <Route
+            path="/"
+            element={
+              <ProtectedRoute>
+                <AdminOrProfile />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/:id"
+            element={
+              <ProtectedRoute>
+                <Layout title="USERinator" navItems={NAV_ITEMS}>
+                  <ProfilePage />
+                </Layout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/:id/edit"
+            element={
+              <ProtectedRoute adminOnly>
+                <Layout title="USERinator" navItems={NAV_ITEMS}>
+                  <UserEditPage />
+                </Layout>
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Admin: Companies */}
+          <Route
+            path="/companies"
+            element={
+              <ProtectedRoute adminOnly>
+                <Layout title="USERinator" navItems={NAV_ITEMS}>
+                  <CompanyListPage />
+                </Layout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/companies/new"
+            element={
+              <ProtectedRoute adminOnly>
+                <Layout title="USERinator" navItems={NAV_ITEMS}>
+                  <CompanyCreatePage />
+                </Layout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/companies/:id"
+            element={
+              <ProtectedRoute>
+                <Layout title="USERinator" navItems={NAV_ITEMS}>
+                  <CompanyPage />
+                </Layout>
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Invitations */}
+          <Route
+            path="/invitations"
+            element={
+              <ProtectedRoute>
+                <Layout title="USERinator" navItems={NAV_ITEMS}>
+                  <InvitationRequestPage />
+                </Layout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/invitations/review"
+            element={
+              <ProtectedRoute adminOnly>
+                <Layout title="USERinator" navItems={NAV_ITEMS}>
+                  <InvitationReviewPage />
+                </Layout>
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Default redirect */}
+          <Route path="*" element={<Navigate to="/profile" replace />} />
         </Routes>
       </AuthProvider>
     </BrowserRouter>

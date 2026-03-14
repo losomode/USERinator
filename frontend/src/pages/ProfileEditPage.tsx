@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { userApi } from '../api';
+import { usersApi } from '../api';
 import type { UserProfile, UpdateProfileInput } from '../types';
 
-export function ProfileEditPage() {
+export function ProfileEditPage(): React.JSX.Element {
   const navigate = useNavigate();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [form, setForm] = useState<UpdateProfileInput>({});
@@ -11,7 +11,7 @@ export function ProfileEditPage() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    userApi.getMe().then((p) => {
+    usersApi.me().then((p) => {
       setProfile(p);
       setForm({
         display_name: p.display_name,
@@ -24,12 +24,12 @@ export function ProfileEditPage() {
     });
   }, []);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault();
     setSaving(true);
     setError('');
     try {
-      await userApi.updateMe(form);
+      await usersApi.updateMe(form);
       navigate('/profile');
     } catch {
       setError('Failed to save profile.');
@@ -52,7 +52,7 @@ export function ProfileEditPage() {
     <div className="max-w-lg">
       <h2 className="mb-4 text-2xl font-bold">Edit Profile</h2>
       {error && <p className="mb-2 text-red-600">{error}</p>}
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4">
         {fields.map(({ label, key }) => (
           <div key={key}>
             <label className="block text-sm font-medium text-gray-700">{label}</label>

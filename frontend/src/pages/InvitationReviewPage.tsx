@@ -1,26 +1,25 @@
 import { useEffect, useState } from 'react';
-import { invitationApi } from '../api';
+import { invitationsApi } from '../api';
 import type { Invitation } from '../types';
-import { RoleGuard } from '../../../shared/permissions';
 
-export function InvitationReviewPage() {
+export function InvitationReviewPage(): React.JSX.Element {
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [error, setError] = useState('');
   const [reviewNotes, setReviewNotes] = useState<Record<number, string>>({});
   const [processing, setProcessing] = useState<number | null>(null);
 
-  const load = () => {
-    invitationApi.list({ status: 'PENDING' })
-      .then((r) => setInvitations(r.results))
+  const load = (): void => {
+    invitationsApi.list({ status: 'PENDING' })
+      .then(setInvitations)
       .catch(() => setError('Failed to load invitations.'));
   };
 
   useEffect(load, []);
 
-  const handleAction = async (id: number, action: 'approve' | 'reject') => {
+  const handleAction = async (id: number, action: 'approve' | 'reject'): Promise<void> => {
     setProcessing(id);
     try {
-      const fn = action === 'approve' ? invitationApi.approve : invitationApi.reject;
+      const fn = action === 'approve' ? invitationsApi.approve : invitationsApi.reject;
       await fn(id, reviewNotes[id]);
       setInvitations((prev) => prev.filter((inv) => inv.id !== id));
     } catch {
@@ -31,18 +30,9 @@ export function InvitationReviewPage() {
   };
 
   return (
-    <RoleGuard 
-      minRole="MANAGER"
-      fallback={
-        <div className="max-w-3xl">
-          <h2 className="mb-4 text-2xl font-bold">Review Invitations</h2>
-          <p className="text-gray-500">You need MANAGER or ADMIN role to review invitations.</p>
-        </div>
-      }
-    >
-      <div className="max-w-3xl">
-        <h2 className="mb-4 text-2xl font-bold">Review Invitations</h2>
-        {error && <div className="mb-4 text-red-600">{error}</div>}
+    <div className="max-w-3xl">
+      <h2 className="mb-4 text-2xl font-bold">Review Invitations</h2>
+      {error && <div className="mb-4 text-red-600">{error}</div>}
 
       {invitations.length === 0 && !error && (
         <p className="text-gray-500">No pending invitations.</p>
@@ -75,14 +65,14 @@ export function InvitationReviewPage() {
 
             <div className="flex gap-2">
               <button
-                onClick={() => handleAction(inv.id, 'approve')}
+                onClick={() => void handleAction(inv.id, 'approve')}
                 disabled={processing === inv.id}
                 className="rounded bg-green-600 px-3 py-1 text-sm text-white hover:bg-green-700 disabled:opacity-50"
               >
                 Approve
               </button>
               <button
-                onClick={() => handleAction(inv.id, 'reject')}
+                onClick={() => void handleAction(inv.id, 'reject')}
                 disabled={processing === inv.id}
                 className="rounded bg-red-600 px-3 py-1 text-sm text-white hover:bg-red-700 disabled:opacity-50"
               >
@@ -93,6 +83,5 @@ export function InvitationReviewPage() {
         ))}
       </div>
     </div>
-    </RoleGuard>
   );
 }

@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { invitationApi, roleApi, companyApi } from '../api';
+import { invitationsApi, rolesApi, companiesApi } from '../api';
 import type { Role, Company } from '../types';
 
-export function InvitationRequestPage() {
+export function InvitationRequestPage(): React.JSX.Element {
   const navigate = useNavigate();
   const [roles, setRoles] = useState<Role[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
@@ -15,11 +15,11 @@ export function InvitationRequestPage() {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    roleApi.list().then((r) => setRoles(r.results)).catch(() => {});
-    companyApi.list().then((c) => setCompanies(c.results)).catch(() => {});
+    rolesApi.list().then(setRoles).catch(() => {});
+    companiesApi.list().then(setCompanies).catch(() => {});
   }, []);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault();
     if (!companyId || !roleId) {
       setError('Company and role are required.');
@@ -28,7 +28,7 @@ export function InvitationRequestPage() {
     setSubmitting(true);
     setError('');
     try {
-      await invitationApi.create({
+      await invitationsApi.create({
         email,
         company: companyId as number,
         requested_role: roleId as number,
@@ -47,7 +47,7 @@ export function InvitationRequestPage() {
       <h2 className="mb-4 text-2xl font-bold">Request Invitation</h2>
       {error && <div className="mb-4 text-red-600">{error}</div>}
 
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4">
         <div>
           <label htmlFor="inv-email" className="mb-1 block text-sm font-medium text-gray-700">Email</label>
           <input

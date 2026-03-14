@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { preferencesApi } from '../api';
-import type { Preferences } from '../types';
+import type { UserPreferences } from '../types';
 
-export function PreferencesPage() {
-  const [prefs, setPrefs] = useState<Preferences | null>(null);
+export function PreferencesPage(): React.JSX.Element {
+  const [prefs, setPrefs] = useState<UserPreferences | null>(null);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -12,12 +12,12 @@ export function PreferencesPage() {
     preferencesApi.get().then(setPrefs).catch(() => setError('Failed to load preferences.'));
   }, []);
 
-  const handleChange = (field: keyof Preferences, value: string | boolean) => {
+  const handleChange = (field: keyof UserPreferences, value: string | boolean): void => {
     setPrefs((prev) => prev ? { ...prev, [field]: value } : prev);
     setSaved(false);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault();
     if (!prefs) return;
     setSaving(true);
@@ -41,7 +41,7 @@ export function PreferencesPage() {
       {error && <div className="mb-4 text-red-600">{error}</div>}
       {saved && <div className="mb-4 text-green-600">Preferences saved.</div>}
 
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4">
         <div>
           <label htmlFor="pref-timezone" className="mb-1 block text-sm font-medium text-gray-700">Timezone</label>
           <input

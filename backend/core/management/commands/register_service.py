@@ -19,8 +19,10 @@ class Command(BaseCommand):
             "base_url": "http://localhost:8004",
             "api_prefix": "/api/users",
             "ui_url": "http://localhost:8080/users",
+            "ui_path": "/users",
             "health_url": "http://localhost:8004/api/users/health/",
             "icon": "👤",
+            "is_core": True,
             "service_key": settings.SERVICE_REGISTRATION_KEY,
         }
 

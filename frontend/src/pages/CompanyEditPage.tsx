@@ -1,10 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { companyApi } from '../api';
+import { companiesApi } from '../api';
 import type { Company, UpdateCompanyInput } from '../types';
-import { PermissionGuard } from '../../../shared/permissions';
 
-export function CompanyEditPage() {
+export function CompanyEditPage(): React.JSX.Element {
   const navigate = useNavigate();
   const [company, setCompany] = useState<Company | null>(null);
   const [form, setForm] = useState<UpdateCompanyInput>({});
@@ -12,7 +11,7 @@ export function CompanyEditPage() {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    companyApi.getMy().then((c) => {
+    companiesApi.getMy().then((c) => {
       setCompany(c);
       setForm({
         name: c.name,
@@ -28,16 +27,16 @@ export function CompanyEditPage() {
     }).catch(() => setError('Failed to load company.'));
   }, []);
 
-  const handleChange = (field: keyof UpdateCompanyInput, value: string) => {
+  const handleChange = (field: keyof UpdateCompanyInput, value: string): void => {
     setForm((prev) => ({ ...prev, [field]: value }));
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault();
     if (!company) return;
     setSaving(true);
     try {
-      await companyApi.update(company.id, form);
+      await companiesApi.update(company.id, form);
       navigate('/company');
     } catch {
       setError('Failed to save changes.');
@@ -62,21 +61,11 @@ export function CompanyEditPage() {
   ];
 
   return (
-    <PermissionGuard 
-      resource="company"
-      action="can_edit_own"
-      fallback={
-        <div className="max-w-2xl">
-          <h2 className="mb-4 text-2xl font-bold">Edit Company</h2>
-          <p className="text-gray-500">You don't have permission to edit company information.</p>
-        </div>
-      }
-    >
-      <div className="max-w-2xl">
-        <h2 className="mb-4 text-2xl font-bold">Edit Company</h2>
-        {error && <div className="mb-4 text-red-600">{error}</div>}
+    <div className="max-w-2xl">
+      <h2 className="mb-4 text-2xl font-bold">Edit Company</h2>
+      {error && <div className="mb-4 text-red-600">{error}</div>}
 
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4">
         {fields.map(({ label, key, type }) => (
           <div key={key}>
             <label className="mb-1 block text-sm font-medium text-gray-700">{label}</label>
@@ -99,6 +88,5 @@ export function CompanyEditPage() {
         </div>
       </form>
     </div>
-    </PermissionGuard>
   );
 }

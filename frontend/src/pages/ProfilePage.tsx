@@ -1,15 +1,29 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { userApi } from '../api';
+import { Link, useParams } from 'react-router-dom';
+import { usersApi } from '../api';
+import { useAuth } from '@inator/shared/auth/AuthProvider';
 import type { UserProfile } from '../types';
 
-export function ProfilePage() {
+export function ProfilePage(): React.JSX.Element {
+  const { id } = useParams<{ id: string }>();
+  const { user, isAdmin } = useAuth();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [error, setError] = useState('');
+  
+  // Determine if viewing own profile
+  const isOwnProfile = !id || (profile && profile.user_id === user?.id);
 
   useEffect(() => {
-    userApi.getMe().then(setProfile).catch(() => setError('Failed to load profile.'));
-  }, []);
+    // If id parameter exists, fetch that user's profile
+    // Otherwise fetch current user's profile
+    const fetchProfile = id
+      ? usersApi.get(Number(id))
+      : usersApi.me();
+    
+    fetchProfile
+      .then(setProfile)
+      .catch(() => setError('Failed to load profile.'));
+  }, [id]);
 
   if (error) return <div className="text-red-600">{error}</div>;
   if (!profile) return <div>Loading profile...</div>;
@@ -18,9 +32,18 @@ export function ProfilePage() {
     <div className="max-w-2xl">
       <div className="mb-4 flex items-center justify-between">
         <h2 className="text-2xl font-bold">{profile.display_name}</h2>
-        <Link to="/profile/edit" className="rounded bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700">
-          Edit Profile
-        </Link>
+        <div className="flex gap-2">
+          {isOwnProfile && (
+            <Link to="/profile/edit" className="rounded bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700">
+              Edit Profile
+            </Link>
+          )}
+          {!isOwnProfile && isAdmin && (
+            <Link to={`/${String(profile.user_id)}/edit`} className="rounded bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700">
+              Edit User
+            </Link>
+          )}
+        </div>
       </div>
 
       <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">

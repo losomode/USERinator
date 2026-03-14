@@ -1,16 +1,20 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { companyApi } from '../api';
+import { Link, useParams } from 'react-router-dom';
+import { companiesApi } from '../api';
+import { useAuth } from '@inator/shared/auth/AuthProvider';
 import type { Company } from '../types';
-import { PermissionGuard } from '../../../shared/permissions';
 
-export function CompanyPage() {
+export function CompanyPage(): React.JSX.Element {
+  const { id } = useParams<{ id: string }>();
+  const { user } = useAuth();
+  const isCompanyAdmin = user?.role_level != null && user.role_level >= 30;
   const [company, setCompany] = useState<Company | null>(null);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    companyApi.getMy().then(setCompany).catch(() => setError('Failed to load company.'));
-  }, []);
+    const fetchCompany = id ? companiesApi.get(Number(id)) : companiesApi.getMy();
+    fetchCompany.then(setCompany).catch(() => setError('Failed to load company.'));
+  }, [id]);
 
   if (error) return <div className="text-red-600">{error}</div>;
   if (!company) return <div>Loading company...</div>;
@@ -19,11 +23,11 @@ export function CompanyPage() {
     <div className="max-w-2xl">
       <div className="mb-4 flex items-center justify-between">
         <h2 className="text-2xl font-bold">{company.name}</h2>
-        <PermissionGuard resource="company" action="can_edit_own">
+        {isCompanyAdmin && (
           <Link to="/company/edit" className="rounded bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700">
             Edit Company
           </Link>
-        </PermissionGuard>
+        )}
       </div>
 
       <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
