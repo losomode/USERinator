@@ -88,13 +88,17 @@ Userinator/
 │   ├── companies/       # Company/organization management
 │   ├── roles/           # Role definitions (numeric level system)
 │   └── invitations/     # Invitation & approval workflows
-├── frontend/
-│   └── src/
-│       ├── modules/users/   # Pages, API, types
-│       └── shared/          # Auth, layout, API client
+├── frontend/            # React SPA (served at /users/ via Caddy)
+│   ├── src/
+│   │   ├── App.tsx      # BrowserRouter (basename=/users) + routes
+│   │   ├── main.tsx     # Entry point
+│   │   ├── pages/       # Profile, UserList, Companies, Invitations, Preferences
+│   │   ├── api.ts       # User-specific API calls
+│   │   └── types.ts     # User-specific types
+│   ├── vite.config.ts   # base=/users/, @inator/shared alias, Tailwind v4
+│   └── package.json
 ├── docs/                # Integration & workflow docs
-├── Taskfile.yml         # Build automation
-└── SPECIFICATION.md     # Full project specification
+└── Taskfile.yml         # Build automation
 ```
 
 ## API Overview
@@ -188,11 +192,11 @@ Key variables:
 
 ## Port Configuration
 
-| Service | Port |
-|---|---|
-| USERinator Backend | 8004 |
-| USERinator Frontend (Vite) | 5173 |
-| Unified Gateway (Caddy) | 8080 |
+| Service | Port | Gateway Path |
+|---|---|---|
+| USERinator Backend | 8004 | `/api/users/`, `/api/companies/`, `/api/roles/`, `/api/invitations/` |
+| USERinator Frontend (Vite) | 3004 | `/users/` |
+| Caddy Gateway | 8080 | All traffic |
 
 ## Related Services
 
