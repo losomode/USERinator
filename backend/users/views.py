@@ -41,18 +41,19 @@ def _auto_provision_profile(user):
     """
     company_id = getattr(user, "company_id_remote", None)
     company_name = getattr(user, "company_name", None)
-
-    if company_id is None:
-        return None
-
-    # Get or create a matching Company record
-    company, _ = Company.objects.get_or_create(
-        id=company_id,
-        defaults={"name": company_name or f"Company {company_id}"},
-    )
-
     role = getattr(user, "role", "MEMBER") or "MEMBER"
     role_level = _ROLE_LEVEL_MAP.get(role, 10)
+
+    company = None
+    if company_id is not None:
+        # Get or create a matching Company record
+        company, _ = Company.objects.get_or_create(
+            id=company_id,
+            defaults={"name": company_name or f"Company {company_id}"},
+        )
+    elif role_level < 100:
+        # Non-admin users must belong to a company — cannot auto-provision
+        return None
 
     # Check for an existing profile with this username (demo data scenario
     # where demo user_id != real AUTHinator id). Since user_id is the PK,
