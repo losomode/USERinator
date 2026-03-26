@@ -53,6 +53,25 @@ export const usersApi = {
     await apiClient.delete(`/users/${String(userId)}/`);
   },
 
+  deactivate: async (userId: number): Promise<void> => {
+    await apiClient.post(`/users/${String(userId)}/deactivate/`);
+  },
+
+  markForDeletion: async (userId: number): Promise<void> => {
+    await apiClient.post(`/users/${String(userId)}/mark-for-deletion/`);
+  },
+
+  setCredentials: async (
+    userId: number,
+    data: { password?: string; new_username?: string },
+  ): Promise<{ detail: string }> => {
+    const response = await apiClient.post<{ detail: string }>(
+      `/users/${String(userId)}/set-credentials/`,
+      data,
+    );
+    return response.data;
+  },
+
   create: async (data: CreateUserProfileInput): Promise<UserProfile> => {
     const response = await apiClient.post<UserProfile>('/users/', data);
     return response.data;

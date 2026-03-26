@@ -23,7 +23,7 @@ const NAV_ITEMS: NavItem[] = [
   { path: '/', label: '👥 All Users' },
   { path: '/companies', label: '🏗️ Companies', adminOnly: true },
   { path: '/invitations', label: '📨 Invite User' },
-  { path: '/invitations/review', label: '📝 Review Invitations', adminOnly: true },
+  { path: '/invitations/review', label: '📝 Review Invitations' },
 ];
 
 /**
@@ -199,7 +199,7 @@ export default function App(): React.JSX.Element {
           <Route
             path="/invitations/review"
             element={
-              <ProtectedRoute adminOnly>
+              <ProtectedRoute>
                 <Layout title="USERinator" navItems={NAV_ITEMS}>
                   <InvitationReviewPage />
                 </Layout>

@@ -35,7 +35,7 @@ export function CompanyCreatePage(): React.JSX.Element {
     { label: 'Company Name', key: 'name', required: true },
     { label: 'Address', key: 'address' },
     { label: 'Phone', key: 'phone' },
-    { label: 'Website', key: 'website', type: 'url' },
+    { label: 'Website', key: 'website' },
     { label: 'Industry', key: 'industry' },
     { label: 'Company Size', key: 'company_size' },
     { label: 'Logo URL', key: 'logo_url', type: 'url' },

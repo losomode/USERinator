@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { usersApi, companiesApi, authApi, rolesApi } from '../api';
+import { usersApi, companiesApi, rolesApi } from '../api';
 import { useAuth } from '@inator/shared/auth/AuthProvider';
 import type { UserProfile, Company, Role } from '../types';
 import { formatRoleName } from '../types';
@@ -31,9 +31,9 @@ export function UserEditPage(): React.JSX.Element {
   const [allRoles, setAllRoles] = useState<Role[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [pwSaving, setPwSaving] = useState(false);
-  const [pwMsg, setPwMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [credForm, setCredForm] = useState({ new_username: '', password: '' });
+  const [credSaving, setCredSaving] = useState(false);
+  const [credMsg, setCredMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   useEffect(() => {
     companiesApi.list().then(setCompanies).catch(() => {/* best-effort */});
@@ -86,21 +86,6 @@ export function UserEditPage(): React.JSX.Element {
     }
   };
 
-  const handleSetPassword = async (e: React.FormEvent): Promise<void> => {
-    e.preventDefault();
-    if (!profile) return;
-    setPwSaving(true);
-    setPwMsg(null);
-    try {
-      await authApi.setUserPassword({ user_id: profile.user_id, new_password: newPassword });
-      setPwMsg({ type: 'success', text: 'Password updated successfully.' });
-      setNewPassword('');
-    } catch {
-      setPwMsg({ type: 'error', text: 'Failed to set password.' });
-    } finally {
-      setPwSaving(false);
-    }
-  };
 
   if (error && !profile) return <div className="text-red-600">{error}</div>;
   if (!profile || !form) return <div>Loading user...</div>;
@@ -229,31 +214,75 @@ export function UserEditPage(): React.JSX.Element {
         </div>
       </form>
 
-      {/* Admin: set user password */}
+      {/* Change username / password for lower-level users */}
       <div className="mt-8 border-t pt-6">
-        <h3 className="mb-3 text-sm font-semibold text-gray-800">Set Password</h3>
-        {pwMsg && (
-          <p className={`mb-3 text-sm ${pwMsg.type === 'success' ? 'text-green-700' : 'text-red-600'}`}>{pwMsg.text}</p>
+        <h3 className="mb-1 text-sm font-semibold text-gray-800">Change Username / Password</h3>
+        <p className="mb-3 text-xs text-gray-400">Fill in one or both fields. Changes take effect immediately.</p>
+        {credMsg && (
+          <p className={`mb-3 text-sm ${credMsg.type === 'success' ? 'text-green-700' : 'text-red-600'}`}>
+            {credMsg.text}
+          </p>
         )}
-        <form onSubmit={(e) => void handleSetPassword(e)} className="flex gap-2">
-          <input
-            type="password"
-            required
-            minLength={8}
-            placeholder="New password (min 8 chars)"
-            className="flex-1 rounded border px-3 py-2 text-sm"
-            value={newPassword}
-            onChange={(e) => setNewPassword(e.target.value)}
-          />
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!profile) return;
+            if (!credForm.new_username && !credForm.password) {
+              setCredMsg({ type: 'error', text: 'Enter a new username, a new password, or both.' });
+              return;
+            }
+            setCredSaving(true);
+            setCredMsg(null);
+            const payload: { password?: string; new_username?: string } = {};
+            if (credForm.password) payload.password = credForm.password;
+            if (credForm.new_username) payload.new_username = credForm.new_username;
+            usersApi.setCredentials(profile.user_id, payload)
+              .then((res) => {
+                setCredMsg({ type: 'success', text: res.detail });
+                setCredForm({ new_username: '', password: '' });
+                // Refresh profile to show updated username
+                if (credForm.new_username) {
+                  setProfile((prev) => prev ? { ...prev, username: credForm.new_username } : prev);
+                }
+              })
+              .catch((err: unknown) => {
+                const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? 'Failed to update credentials.';
+                setCredMsg({ type: 'error', text: detail });
+              })
+              .finally(() => setCredSaving(false));
+          }}
+          className="space-y-3"
+        >
+          <div>
+            <label className="block text-sm font-medium text-gray-700">New Username</label>
+            <input
+              type="text"
+              minLength={3}
+              placeholder="Leave blank to keep current"
+              className="mt-1 w-full rounded border px-3 py-2 text-sm"
+              value={credForm.new_username}
+              onChange={(e) => setCredForm({ ...credForm, new_username: e.target.value })}
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700">New Password</label>
+            <input
+              type="password"
+              minLength={8}
+              placeholder="Leave blank to keep current (min 8 chars)"
+              className="mt-1 w-full rounded border px-3 py-2 text-sm"
+              value={credForm.password}
+              onChange={(e) => setCredForm({ ...credForm, password: e.target.value })}
+            />
+          </div>
           <button
             type="submit"
-            disabled={pwSaving}
+            disabled={credSaving}
             className="rounded bg-orange-600 px-4 py-2 text-sm text-white hover:bg-orange-700 disabled:opacity-50"
           >
-            {pwSaving ? 'Setting…' : 'Set Password'}
+            {credSaving ? 'Updating…' : 'Update Credentials'}
           </button>
         </form>
-        <p className="mt-1 text-xs text-gray-400">This will immediately change the user&apos;s password in AUTHinator.</p>
       </div>
     </div>
   );

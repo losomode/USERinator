@@ -26,9 +26,15 @@ DEFAULT_ROLES = [
         "is_system_role": True,
     },
     {
+        "role_name": "COMPANY_ADMIN",
+        "role_level": 50,
+        "description": "Company administrator with elevated company access. Can manage managers and members, approve invitations, deactivate users up to manager level.",
+        "is_system_role": True,
+    },
+    {
         "role_name": "COMPANY_MANAGER",
         "role_level": 30,
-        "description": "Company manager with team management access within their company.",
+        "description": "Company manager with team management access within their company. Can manage members and approve invitations.",
         "is_system_role": True,
     },
     {

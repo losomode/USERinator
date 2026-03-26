@@ -66,8 +66,15 @@ class UserProfile(models.Model):
     notification_email = models.BooleanField(default=True)
     notification_in_app = models.BooleanField(default=True)
 
-    # Metadata
+    # Deactivation / deletion workflow
     is_active = models.BooleanField(default=True)
+    marked_for_deletion = models.BooleanField(
+        default=False,
+        help_text="User has been flagged for permanent deletion by a manager/admin. Platform admins review and delete.",
+    )
+    marked_for_deletion_at = models.DateTimeField(
+        null=True, blank=True, help_text="When the user was marked for deletion."
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     last_synced_at = models.DateTimeField(auto_now=True)

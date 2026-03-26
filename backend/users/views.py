@@ -173,7 +173,13 @@ class UserProfileListCreateView(CompanyScopedMixin, generics.ListCreateAPIView):
         return [IsAuthenticated()]
 
     def get_queryset(self):
-        queryset = UserProfile.objects.select_related("company").filter(is_active=True)
+        role_level = getattr(self.request.user, "role_level", 0)
+        # Members (< 30) only see active users.
+        # Managers/admins (>= 30) see active + deactivated so they can manage their team.
+        if role_level >= 30:
+            queryset = UserProfile.objects.select_related("company")
+        else:
+            queryset = UserProfile.objects.select_related("company").filter(is_active=True)
         queryset = self.get_company_scoped_queryset(queryset)
 
         # Search support
@@ -221,24 +227,33 @@ class UserProfileDetailView(generics.RetrieveUpdateDestroyAPIView):
         return UserProfile.objects.select_related("company")
 
     def perform_destroy(self, instance):
-        """Full user removal:
+        """Full user removal.
 
-        1. Deactivate AUTHinator account — immediately revokes login & JWT tokens.
-        2. Soft-delete USERinator profile — removes from all lists; data is
-           preserved for audit (RMAs, orders, etc. in other services).
-        3. Mangle username to free the slot for re-creation.
+        Two paths depending on state:
+
+        A) User already deactivated + marked_for_deletion (admin final review step):
+           Hard-delete the UserProfile row. AUTHinator was already deactivated when
+           the user was first soft-deactivated, so no extra call needed.
+
+        B) Regular removal (first-time delete of an active user):
+           Deactivate AUTHinator, soft-delete profile, mangle username to free the slot.
         """
-        # Step 1: kill the auth account first so there's no window where
-        # the profile is gone but they can still log in.
-        _deactivate_authinator_account(instance.user_id)
+        if not instance.is_active and instance.marked_for_deletion:
+            # Path A: permanent deletion — remove the DB row entirely
+            display = instance.display_name
+            uid = instance.user_id
+            instance.delete()
+            logger.info("Permanently deleted user '%s' (id=%s).", display, uid)
+            return
 
-        # Step 2 & 3: soft-delete the profile and free the username
+        # Path B: first-time removal — deactivate auth + soft-delete profile
+        _deactivate_authinator_account(instance.user_id)
         instance.is_active = False
         if not instance.username.startswith("_deleted_"):
             instance.username = f"_deleted_{instance.user_id}_{instance.username}"
         instance.save(update_fields=["is_active", "username"])
         logger.info(
-            "Removed user %s (id=%s) — AUTHinator deactivated, USERinator profile soft-deleted.",
+            "Deactivated user %s (id=%s) — AUTHinator deactivated, profile soft-deleted.",
             instance.username,
             instance.user_id,
         )
@@ -263,19 +278,24 @@ class UserProfileDetailView(generics.RetrieveUpdateDestroyAPIView):
                     self.permission_denied(request)
             return
 
-        # MANAGER can view/edit users in own company
+        # Company-scoped users (30-99): view their company; write only to lower-level users
         if role_level >= 30:
             if obj.company_id != user_company:
                 self.permission_denied(request)
+            # Write operations: cannot edit peers (same level) or superiors
+            if request.method not in ("GET", "HEAD", "OPTIONS"):
+                if obj.role_level >= role_level:
+                    self.permission_denied(
+                        request,
+                        message="You can only edit users with a lower role level than your own.",
+                    )
             return
 
         # MEMBER can only view profiles in same company, edit own profile
         if request.method in ("GET", "HEAD", "OPTIONS"):
-            # Allow viewing profiles in same company
             if obj.company_id != user_company:
                 self.permission_denied(request)
         elif obj.user_id != user.id:
-            # Can only edit own profile
             self.permission_denied(request)
 
 
@@ -467,6 +487,235 @@ class PreferencesMeView(views.APIView):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data)
+
+
+# ---------------------------------------------------------------------------
+# Deactivation & deletion-request workflow
+# ---------------------------------------------------------------------------
+
+# Minimum role level to have deactivation rights over company users
+_DEACTIVATE_MIN_LEVEL = 30  # COMPANY_MANAGER+
+
+
+class UserSetCredentialsView(views.APIView):
+    """Allow higher-level users to change a lower-level user's password and/or username.
+
+    Permission rules mirror deactivation: acting user must have higher role_level
+    than the target and be in the same company (or be a platform admin).
+
+    Accepts: { password?: str, new_username?: str } — one or both.
+    Proxies to AUTHinator via service key after permission checks.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, user_id):
+        import requests as _requests
+        from django.conf import settings as _settings
+
+        acting_level = getattr(request.user, "role_level", 0)
+        acting_company = getattr(request.user, "company_id_remote", None)
+
+        if acting_level < 30:
+            return Response(
+                {"detail": "You do not have permission to change another user's credentials."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        try:
+            profile = UserProfile.objects.get(user_id=user_id)
+        except UserProfile.DoesNotExist:
+            return Response({"detail": "User not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if acting_level < 100 and profile.company_id != acting_company:
+            return Response(
+                {"detail": "You can only update credentials of users within your company."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        if acting_level < 100 and profile.role_level >= acting_level:
+            return Response(
+                {"detail": "You can only update credentials of users with a lower role level than your own."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        new_password = request.data.get("password", "").strip()
+        new_username = request.data.get("new_username", "").strip()
+
+        if not new_password and not new_username:
+            return Response(
+                {"detail": "Provide at least one of: password, new_username."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        authinator_url = getattr(_settings, "AUTHINATOR_API_URL", "")
+        service_key = getattr(_settings, "SERVICE_REGISTRATION_KEY", "")
+        headers = {"X-Service-Key": service_key}
+        errors = []
+
+        if new_password:
+            try:
+                resp = _requests.post(
+                    f"{authinator_url}admin/set-password/",
+                    json={"user_id": user_id, "new_password": new_password},
+                    headers=headers,
+                    timeout=10,
+                )
+                if resp.status_code != 200:
+                    errors.append(resp.json().get("detail") or "Password update failed.")
+            except _requests.RequestException as exc:
+                errors.append(f"Could not reach AUTHinator: {exc}")
+
+        if new_username and not errors:
+            try:
+                resp = _requests.post(
+                    f"{authinator_url}admin/set-username/",
+                    json={"user_id": user_id, "new_username": new_username},
+                    headers=headers,
+                    timeout=10,
+                )
+                if resp.status_code == 200:
+                    # Sync username in USERinator profile
+                    profile.username = new_username
+                    profile.save(update_fields=["username"])
+                else:
+                    errors.append(resp.json().get("detail") or "Username update failed.")
+            except _requests.RequestException as exc:
+                errors.append(f"Could not reach AUTHinator: {exc}")
+
+        if errors:
+            return Response({"detail": " ".join(errors)}, status=status.HTTP_400_BAD_REQUEST)
+
+        parts = []
+        if new_password:
+            parts.append("password")
+        if new_username:
+            parts.append(f"username (now: {new_username})")
+        return Response({"detail": f"Updated {' and '.join(parts)} successfully."})
+
+
+class UserDeactivateView(views.APIView):
+    """Deactivate a user account within a company.
+
+    Permission rules (all company-scoped):
+    - COMPANY_MANAGER (30): can deactivate COMPANY_MEMBER (10) only
+    - COMPANY_ADMIN (50): can deactivate COMPANY_MANAGER (30) and COMPANY_MEMBER (10)
+    - PLATFORM_ADMIN (100): can deactivate anyone (but they use full Remove for that)
+
+    Deactivation: sets UserProfile.is_active=False AND deactivates the AUTHinator
+    account so the user can no longer log in.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, user_id):
+        acting_level = getattr(request.user, "role_level", 0)
+        acting_company = getattr(request.user, "company_id_remote", None)
+
+        if acting_level < _DEACTIVATE_MIN_LEVEL:
+            return Response(
+                {"detail": "You do not have permission to deactivate users."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        try:
+            profile = UserProfile.objects.get(user_id=user_id)
+        except UserProfile.DoesNotExist:
+            return Response(
+                {"detail": "User not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Company scoping (platform admins skip this)
+        if acting_level < 100 and profile.company_id != acting_company:
+            return Response(
+                {"detail": "You can only deactivate users within your company."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        # Cannot deactivate peers or superiors
+        if acting_level < 100 and profile.role_level >= acting_level:
+            return Response(
+                {"detail": "You can only deactivate users with a lower role level than your own."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        if not profile.is_active:
+            return Response(
+                {"detail": "User is already deactivated."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Deactivate AUTHinator account first (revokes login + JWTs)
+        _deactivate_authinator_account(user_id)
+
+        # Soft-deactivate the USERinator profile (keep username intact for review)
+        profile.is_active = False
+        profile.save(update_fields=["is_active"])
+
+        logger.info(
+            "User %s (id=%s) deactivated by %s (level=%s)",
+            profile.username, user_id, request.user.username, acting_level,
+        )
+        return Response({"detail": f"{profile.display_name} has been deactivated."})
+
+
+class UserMarkForDeletionView(views.APIView):
+    """Mark a deactivated user for permanent deletion.
+
+    Any user with deactivation rights can mark a deactivated user.
+    Platform admins (100) review and permanently delete via the DELETE endpoint.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, user_id):
+        from django.utils import timezone as tz
+
+        acting_level = getattr(request.user, "role_level", 0)
+        acting_company = getattr(request.user, "company_id_remote", None)
+
+        if acting_level < _DEACTIVATE_MIN_LEVEL:
+            return Response(
+                {"detail": "You do not have permission to mark users for deletion."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        try:
+            profile = UserProfile.objects.get(user_id=user_id)
+        except UserProfile.DoesNotExist:
+            return Response(
+                {"detail": "User not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if acting_level < 100 and profile.company_id != acting_company:
+            return Response(
+                {"detail": "You can only mark users within your company for deletion."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        if acting_level < 100 and profile.role_level >= acting_level:
+            return Response(
+                {"detail": "You can only mark users with a lower role level than your own."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        if profile.is_active:
+            return Response(
+                {"detail": "Deactivate the user before marking them for deletion."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        profile.marked_for_deletion = True
+        profile.marked_for_deletion_at = tz.now()
+        profile.save(update_fields=["marked_for_deletion", "marked_for_deletion_at"])
+
+        logger.info(
+            "User %s (id=%s) marked for deletion by %s (level=%s)",
+            profile.username, user_id, request.user.username, acting_level,
+        )
+        return Response({"detail": f"{profile.display_name} has been marked for deletion and will be reviewed by a platform admin."})
 
 
 @api_view(["GET"])

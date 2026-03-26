@@ -26,6 +26,9 @@ class UserProfileListSerializer(serializers.ModelSerializer):
             "avatar_url",
             "company",
             "company_name",
+            "is_active",
+            "marked_for_deletion",
+            "marked_for_deletion_at",
         ]
         read_only_fields = fields
 

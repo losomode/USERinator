@@ -27,6 +27,8 @@ export interface UserProfile {
   notification_email: boolean;
   notification_in_app: boolean;
   is_active: boolean;
+  marked_for_deletion: boolean;
+  marked_for_deletion_at: string | null;
   created_at: string;
   updated_at: string;
 }
