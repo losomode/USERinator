@@ -9,7 +9,14 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
 from companies.models import Company
-from core.permissions import AdminOnly, CompanyScopedMixin, ManagerOrHigher, IsServiceAuthenticated
+from core.permissions import (
+    AdminOnly,
+    CompanyScopedMixin,
+    ManagerOrHigher,
+    IsServiceAuthenticated,
+    PLATFORM_ROLE_THRESHOLD,
+    is_platform_user,
+)
 from users.models import UserProfile
 from permissions import PermissionChecker
 from users.serializers import (
@@ -51,9 +58,10 @@ def _auto_provision_profile(user):
             id=company_id,
             defaults={"name": company_name or f"Company {company_id}"},
         )
-    elif role_level < 100:
-        # Non-admin users must belong to a company — cannot auto-provision
+    elif role_level < PLATFORM_ROLE_THRESHOLD:
+        # Company-scoped users (role < 60) must belong to a company — cannot auto-provision
         return None
+    # else: platform user (role >= 60, no company) — company stays None
 
     # Check for an existing profile with this username (demo data scenario
     # where demo user_id != real AUTHinator id). Since user_id is the PK,
@@ -109,6 +117,47 @@ def _auto_provision_profile(user):
     return profile
 
 
+def _deactivate_authinator_account(user_id: int) -> None:
+    """Call AUTHinator to deactivate the user's login account.
+
+    Uses the service key so this works even during background operations.
+    Failures are logged as warnings — the USERinator soft-delete still proceeds.
+    """
+    import requests
+    from django.conf import settings as _settings
+
+    authinator_url = getattr(_settings, "AUTHINATOR_API_URL", "")
+    if not authinator_url:
+        logger.warning(
+            "AUTHINATOR_API_URL not configured — skipping AUTHinator deactivation for user %s",
+            user_id,
+        )
+        return
+
+    try:
+        # AUTHINATOR_API_URL ends with 'auth/' (e.g. http://localhost:8001/api/auth/)
+        # so appending 'admin/deactivate-user/' gives the correct endpoint path.
+        response = requests.post(
+            f"{authinator_url}admin/deactivate-user/",
+            json={"user_id": user_id},
+            headers={"X-Service-Key": getattr(_settings, "SERVICE_REGISTRATION_KEY", "")},
+            timeout=10,
+        )
+        if response.status_code == 200:
+            logger.info("AUTHinator account deactivated for user_id=%s", user_id)
+        else:
+            logger.warning(
+                "AUTHinator deactivation returned %s for user_id=%s: %s",
+                response.status_code,
+                user_id,
+                response.text,
+            )
+    except requests.RequestException as exc:
+        logger.warning(
+            "Could not reach AUTHinator to deactivate user_id=%s: %s", user_id, exc
+        )
+
+
 class UserProfileListCreateView(CompanyScopedMixin, generics.ListCreateAPIView):
     """List user profiles (company-scoped) or create new profile (admin)."""
 
@@ -138,9 +187,14 @@ class UserProfileListCreateView(CompanyScopedMixin, generics.ListCreateAPIView):
             )
 
         # Role level filter
-        role_level = self.request.query_params.get("role_level")
-        if role_level:
-            queryset = queryset.filter(role_level=role_level)
+        role_level_filter = self.request.query_params.get("role_level")
+        if role_level_filter:
+            queryset = queryset.filter(role_level=role_level_filter)
+
+        # Company filter (platform users only — admin or no-company platform roles)
+        company_filter = self.request.query_params.get("company")
+        if company_filter and is_platform_user(self.request.user):
+            queryset = queryset.filter(company_id=company_filter)
 
         return queryset
 
@@ -167,13 +221,27 @@ class UserProfileDetailView(generics.RetrieveUpdateDestroyAPIView):
         return UserProfile.objects.select_related("company")
 
     def perform_destroy(self, instance):
-        """Soft delete: deactivate instead of hard delete.
-        
-        Note: Only ADMIN can delete users. For MANAGER deactivation,
-        check permissions using PermissionChecker.can_deactivate_user().
+        """Full user removal:
+
+        1. Deactivate AUTHinator account — immediately revokes login & JWT tokens.
+        2. Soft-delete USERinator profile — removes from all lists; data is
+           preserved for audit (RMAs, orders, etc. in other services).
+        3. Mangle username to free the slot for re-creation.
         """
+        # Step 1: kill the auth account first so there's no window where
+        # the profile is gone but they can still log in.
+        _deactivate_authinator_account(instance.user_id)
+
+        # Step 2 & 3: soft-delete the profile and free the username
         instance.is_active = False
-        instance.save(update_fields=["is_active"])
+        if not instance.username.startswith("_deleted_"):
+            instance.username = f"_deleted_{instance.user_id}_{instance.username}"
+        instance.save(update_fields=["is_active", "username"])
+        logger.info(
+            "Removed user %s (id=%s) — AUTHinator deactivated, USERinator profile soft-deleted.",
+            instance.username,
+            instance.user_id,
+        )
 
     def check_object_permissions(self, request, obj):
         """Users can view/edit own profile; ADMIN/MANAGER can manage company profiles."""
@@ -184,6 +252,15 @@ class UserProfileDetailView(generics.RetrieveUpdateDestroyAPIView):
 
         # ADMIN has full access to all profiles
         if role_level >= 100:
+            return
+
+        # Platform users (no company, role >= 60): cross-company READ-ONLY
+        # They can view any profile but cannot edit others' profiles
+        if is_platform_user(user):
+            if request.method not in ("GET", "HEAD", "OPTIONS"):
+                # Allow editing only own profile
+                if obj.user_id != user.id:
+                    self.permission_denied(request)
             return
 
         # MANAGER can view/edit users in own company
@@ -208,19 +285,36 @@ class UserProfileMeView(views.APIView):
     permission_classes = [IsAuthenticated]
 
     def _get_profile(self, request):
-        """Return the caller's profile, auto-provisioning if needed."""
+        """Return the caller's profile, auto-provisioning if needed.
+
+        Also syncs username/email from AUTHinator token when they drift
+        (e.g. after a username change via /api/auth/change-username/).
+        """
         try:
-            return UserProfile.objects.select_related("company").get(
+            profile = UserProfile.objects.select_related("company").get(
                 user_id=request.user.id
             )
         except UserProfile.DoesNotExist:
             profile = _auto_provision_profile(request.user)
             if profile is not None:
                 # Re-fetch with company join
-                return UserProfile.objects.select_related("company").get(
+                profile = UserProfile.objects.select_related("company").get(
                     user_id=request.user.id
                 )
-            return None
+            return profile
+
+        # Sync username / email if AUTHinator changed them
+        update_fields = []
+        if request.user.username and profile.username != request.user.username:
+            profile.username = request.user.username
+            update_fields.append("username")
+        token_email = getattr(request.user, "email", "") or ""
+        if token_email and profile.email != token_email:
+            profile.email = token_email
+            update_fields.append("email")
+        if update_fields:
+            profile.save(update_fields=update_fields)
+        return profile
 
     def get(self, request):
         profile = self._get_profile(request)

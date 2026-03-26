@@ -14,23 +14,25 @@ import { CompanyListPage } from './pages/CompanyListPage';
 import { CompanyCreatePage } from './pages/CompanyCreatePage';
 import { InvitationRequestPage } from './pages/InvitationRequestPage';
 import { InvitationReviewPage } from './pages/InvitationReviewPage';
+import { UserCreatePage } from './pages/UserCreatePage';
 
 const NAV_ITEMS: NavItem[] = [
   { path: '/profile', label: '👤 My Profile' },
   { path: '/preferences', label: '⚙️ Preferences' },
   { path: '/company', label: '🏢 My Company' },
-  { path: '/', label: '👥 All Users', adminOnly: true },
+  { path: '/', label: '👥 All Users' },
   { path: '/companies', label: '🏗️ Companies', adminOnly: true },
-  { path: '/invitations', label: '📨 Invitations', adminOnly: true },
+  { path: '/invitations', label: '📨 Invite User' },
   { path: '/invitations/review', label: '📝 Review Invitations', adminOnly: true },
 ];
 
-/** Root route: admins see user list, non-admins redirect to their profile. */
-function AdminOrProfile(): React.JSX.Element {
-  const { isAdmin } = useAuth();
-  if (!isAdmin) {
-    return <Navigate to="/profile" replace />;
-  }
+/**
+ * Root route: all authenticated users land on the user list.
+ * Admins see all users + filter/create controls.
+ * Company-scoped users see only their own company's users.
+ * The UserList component handles scoping automatically.
+ */
+function RootPage(): React.JSX.Element {
   return (
     <Layout title="USERinator" navItems={NAV_ITEMS}>
       <UserList />
@@ -101,12 +103,12 @@ export default function App(): React.JSX.Element {
             }
           />
 
-          {/* Root: admins see user list, others go to profile */}
+          {/* Root: all users see the user list, scoped by their role */}
           <Route
             path="/"
             element={
               <ProtectedRoute>
-                <AdminOrProfile />
+                <RootPage />
               </ProtectedRoute>
             }
           />
@@ -121,9 +123,19 @@ export default function App(): React.JSX.Element {
             }
           />
           <Route
-            path="/:id/edit"
+            path="/users/new"
             element={
               <ProtectedRoute adminOnly>
+                <Layout title="USERinator" navItems={NAV_ITEMS}>
+                  <UserCreatePage />
+                </Layout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/:id/edit"
+            element={
+              <ProtectedRoute>
                 <Layout title="USERinator" navItems={NAV_ITEMS}>
                   <UserEditPage />
                 </Layout>
@@ -148,6 +160,16 @@ export default function App(): React.JSX.Element {
               <ProtectedRoute adminOnly>
                 <Layout title="USERinator" navItems={NAV_ITEMS}>
                   <CompanyCreatePage />
+                </Layout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/companies/:id/edit"
+            element={
+              <ProtectedRoute adminOnly>
+                <Layout title="USERinator" navItems={NAV_ITEMS}>
+                  <CompanyEditPage />
                 </Layout>
               </ProtectedRoute>
             }

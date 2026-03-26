@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { companiesApi } from '../api';
 import type { Company, UpdateCompanyInput } from '../types';
 
 export function CompanyEditPage(): React.JSX.Element {
+  // When navigated from /companies/:id/edit, `id` is defined and we fetch by id.
+  // When navigated from /company/edit, `id` is undefined and we fall back to getMy().
+  const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [company, setCompany] = useState<Company | null>(null);
   const [form, setForm] = useState<UpdateCompanyInput>({});
@@ -11,21 +14,28 @@ export function CompanyEditPage(): React.JSX.Element {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    companiesApi.getMy().then((c) => {
-      setCompany(c);
-      setForm({
-        name: c.name,
-        address: c.address,
-        phone: c.phone,
-        website: c.website,
-        industry: c.industry,
-        company_size: c.company_size,
-        logo_url: c.logo_url,
-        billing_contact_email: c.billing_contact_email,
-        notes: c.notes,
-      });
-    }).catch(() => setError('Failed to load company.'));
-  }, []);
+    const fetch = id ? companiesApi.get(Number(id)) : companiesApi.getMy();
+    fetch
+      .then((c) => {
+        setCompany(c);
+        setForm({
+          name: c.name,
+          address: c.address,
+          phone: c.phone,
+          website: c.website,
+          industry: c.industry,
+          company_size: c.company_size,
+          logo_url: c.logo_url,
+          billing_contact_email: c.billing_contact_email,
+          notes: c.notes,
+          account_status: c.account_status,
+        });
+      })
+      .catch(() => setError('Failed to load company.'));
+  }, [id]);
+
+  // After saving, return to the company detail page we came from
+  const backLink = id ? `/companies/${id}` : '/company';
 
   const handleChange = (field: keyof UpdateCompanyInput, value: string): void => {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -37,7 +47,7 @@ export function CompanyEditPage(): React.JSX.Element {
     setSaving(true);
     try {
       await companiesApi.update(company.id, form);
-      navigate('/company');
+      navigate(backLink);
     } catch {
       setError('Failed to save changes.');
     } finally {
@@ -82,7 +92,7 @@ export function CompanyEditPage(): React.JSX.Element {
           <button type="submit" disabled={saving} className="rounded bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-50">
             {saving ? 'Saving...' : 'Save Changes'}
           </button>
-          <button type="button" onClick={() => navigate('/company')} className="rounded border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50">
+          <button type="button" onClick={() => navigate(backLink)} className="rounded border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50">
             Cancel
           </button>
         </div>

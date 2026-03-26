@@ -1,12 +1,35 @@
 """
 Permission classes for USERinator.
 
-Role level hierarchy: ADMIN=100, MANAGER=30, MEMBER=10.
-Company scoping ensures users only access their own company's data.
+Role level hierarchy:
+  ADMIN=100           - Platform admin, full read/write, no company
+  PLATFORM_MANAGER=75 - Platform observer, cross-company read, no company
+  PLATFORM_MEMBER=60  - Platform observer, cross-company read-only, no company
+  MANAGER=30          - Company-scoped manager
+  MEMBER=10           - Company-scoped member
+
+Platform users (role_level >= PLATFORM_ROLE_THRESHOLD, no company) can see all
+company data but only ADMIN (>= 100) can modify it.
 """
 
 from django.conf import settings
 from rest_framework.permissions import BasePermission
+
+# role_level threshold that separates platform users (no company) from company users
+PLATFORM_ROLE_THRESHOLD = 60
+
+
+def is_platform_user(user) -> bool:
+    """Return True if the user is a platform-level user.
+
+    Platform users have role_level >= PLATFORM_ROLE_THRESHOLD and are NOT
+    associated with any company.  They have cross-company read access;
+    only ADMIN (>= 100) also has write access.
+    """
+    return (
+        getattr(user, "role_level", 0) >= PLATFORM_ROLE_THRESHOLD
+        and getattr(user, "company_id_remote", None) is None
+    )
 
 
 class IsServiceAuthenticated(BasePermission):
@@ -89,7 +112,8 @@ class CompanyScopedMixin:
     Mixin for views that filters querysets by the user's company.
 
     Assumes the model has a 'company' or 'company_id' field.
-    Platform admins see all records.
+    - ADMIN (>= 100) and platform users (>= 60, no company) see all records.
+    - Company users see only records in their own company.
     """
 
     company_field = "company_id"
@@ -99,8 +123,8 @@ class CompanyScopedMixin:
         user = self.request.user
         role_level = getattr(user, "role_level", 0)
 
-        # Platform admins see everything
-        if role_level >= 100:
+        # Platform users (ADMIN or no-company platform roles) see everything
+        if role_level >= 100 or is_platform_user(user):
             return queryset
 
         company_id = getattr(user, "company_id_remote", None)

@@ -8,6 +8,10 @@ from users.models import UserProfile
 class UserProfileListSerializer(serializers.ModelSerializer):
     """Summary serializer for list views."""
 
+    company_name = serializers.CharField(
+        source="company.name", read_only=True, allow_null=True, default=None
+    )
+
     class Meta:
         model = UserProfile
         fields = [
@@ -21,12 +25,17 @@ class UserProfileListSerializer(serializers.ModelSerializer):
             "role_level",
             "avatar_url",
             "company",
+            "company_name",
         ]
         read_only_fields = fields
 
 
 class UserProfileDetailSerializer(serializers.ModelSerializer):
     """Full detail serializer."""
+
+    company_name = serializers.CharField(
+        source="company.name", read_only=True, allow_null=True, default=None
+    )
 
     class Meta:
         model = UserProfile
@@ -103,9 +112,35 @@ class UserProfileAdminUpdateSerializer(serializers.ModelSerializer):
                 )
         return value
 
+    def validate(self, attrs):
+        """Enforce platform/company consistency when role or company changes."""
+        from core.permissions import PLATFORM_ROLE_THRESHOLD
+
+        # Only validate if both fields are being updated
+        role_level = attrs.get("role_level")
+        company = attrs.get("company")
+
+        if role_level is not None and company is not None:
+            if role_level >= PLATFORM_ROLE_THRESHOLD and company:
+                raise serializers.ValidationError(
+                    {"company": "Platform-level roles (level \u2265 60) cannot be associated with a company."}
+                )
+            if role_level < PLATFORM_ROLE_THRESHOLD and not company:
+                raise serializers.ValidationError(
+                    {"company": "Company-level roles (level < 60) require a company."}
+                )
+        return attrs
+
 
 class UserProfileCreateSerializer(serializers.ModelSerializer):
     """Serializer for admin-only profile creation."""
+
+    # company is optional — required for company roles (< 60), forbidden for platform roles (>= 60)
+    company = serializers.PrimaryKeyRelatedField(
+        queryset=__import__("companies.models", fromlist=["Company"]).Company.objects.all(),
+        required=False,
+        allow_null=True,
+    )
 
     class Meta:
         model = UserProfile
@@ -119,37 +154,64 @@ class UserProfileCreateSerializer(serializers.ModelSerializer):
             "role_level",
         ]
 
-    def validate_company(self, value):
-        """MANAGER can only create users for their own company."""
-        request = self.context.get("request")
-        if request:
-            user_role_level = getattr(request.user, "role_level", 0)
-            user_company = getattr(request.user, "company_id_remote", None)
-            
-            # MANAGER can only create users for their own company
-            if user_role_level < 100 and value.id != user_company:
-                raise serializers.ValidationError(
-                    "You can only create users for your own company."
-                )
-        return value
-
     def validate_role_level(self, value):
+        """Cannot assign a role higher than your own."""
         request = self.context.get("request")
         if request:
             user_role_level = getattr(request.user, "role_level", 0)
-            
-            # MANAGER (30) can only create MEMBER (10)
-            if user_role_level == 30 and value != 10:
-                raise serializers.ValidationError(
-                    "Managers can only create MEMBER-level users (role_level=10)."
-                )
-            
-            # General rule: cannot assign higher than own level
             if value > user_role_level:
                 raise serializers.ValidationError(
                     "Cannot assign a role level higher than your own."
                 )
         return value
+
+    def validate(self, attrs):
+        """Cross-field validation: enforce platform/company role rules."""
+        from core.permissions import PLATFORM_ROLE_THRESHOLD
+
+        role_level = attrs.get("role_level", 10)
+        company = attrs.get("company")
+        request = self.context.get("request")
+
+        # Platform roles must NOT have a company
+        if role_level >= PLATFORM_ROLE_THRESHOLD and company is not None:
+            raise serializers.ValidationError(
+                {"company": "Platform-level roles (level \u2265 60) cannot be associated with a company."}
+            )
+
+        # Company roles MUST have a company
+        if role_level < PLATFORM_ROLE_THRESHOLD and company is None:
+            raise serializers.ValidationError(
+                {"company": "Company-level roles (level < 60) require a company assignment."}
+            )
+
+        # MANAGER can only create users for their own company
+        if request and company is not None:
+            user_role_level = getattr(request.user, "role_level", 0)
+            user_company = getattr(request.user, "company_id_remote", None)
+            if user_role_level < 100 and company.id != user_company:
+                raise serializers.ValidationError(
+                    {"company": "You can only create users for your own company."}
+                )
+
+        return attrs
+
+    def create(self, validated_data):
+        """Create or reactivate a UserProfile.
+
+        If a soft-deleted profile exists for the given user_id, reactivate it
+        rather than failing with a unique-constraint error.
+        """
+        try:
+            existing = UserProfile.objects.get(user_id=validated_data["user_id"])
+            # Reactivate and update fields
+            for field, value in validated_data.items():
+                setattr(existing, field, value)
+            existing.is_active = True
+            existing.save()
+            return existing
+        except UserProfile.DoesNotExist:
+            return super().create(validated_data)
 
 
 class UserRoleSerializer(serializers.ModelSerializer):

@@ -8,13 +8,18 @@ from companies.models import Company
 class CompanyListSerializer(serializers.ModelSerializer):
     """Summary serializer for list views."""
 
+    user_count = serializers.SerializerMethodField()
+
+    def get_user_count(self, obj) -> int:
+        return obj.user_profiles.filter(is_active=True).count()
+
     class Meta:
         model = Company
         fields = [
             "id",
             "name",
             "industry",
-            "company_size",
+            "user_count",
             "account_status",
             "logo_url",
         ]
@@ -45,6 +50,7 @@ class CompanyCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Company
         fields = [
+            "id",
             "name",
             "address",
             "phone",
@@ -56,7 +62,10 @@ class CompanyCreateSerializer(serializers.ModelSerializer):
             "custom_fields",
             "tags",
             "notes",
+            "account_status",
+            "created_at",
         ]
+        read_only_fields = ["id", "account_status", "created_at"]
 
     def create(self, validated_data):
         validated_data["created_by"] = self.context["request"].user

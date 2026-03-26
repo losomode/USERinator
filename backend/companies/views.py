@@ -11,7 +11,13 @@ from companies.serializers import (
     CompanyListSerializer,
     CompanyUpdateSerializer,
 )
-from core.permissions import AdminOnly, CanViewCompanyScopedResource, ManagerOrHigher, IsAuthenticatedOrServiceKey
+from core.permissions import (
+    AdminOnly,
+    CanViewCompanyScopedResource,
+    ManagerOrHigher,
+    IsAuthenticatedOrServiceKey,
+    is_platform_user,
+)
 from users.models import UserProfile
 from users.serializers import UserProfileListSerializer
 
@@ -59,24 +65,28 @@ class CompanyDetailView(generics.RetrieveUpdateAPIView):
 
     def check_object_permissions(self, request, obj):
         super().check_object_permissions(request, obj)
-        
-        # Service key authentication bypasses company scoping (used for service-to-service calls)
-        if not hasattr(request.user, 'is_authenticated') or not request.user.is_authenticated:
+
+        # Service key authentication bypasses company scoping (service-to-service calls)
+        if not hasattr(request.user, "is_authenticated") or not request.user.is_authenticated:
             return
-        
+
         role_level = getattr(request.user, "role_level", 0)
-        
-        # ADMIN can access any company
+
+        # ADMIN can access any company (read + write)
         if role_level >= 100:
             return
-        
-        # MANAGER/MEMBER can only view their own company
+
+        # Platform users (no company, role >= 60): cross-company READ-ONLY
+        if is_platform_user(request.user):
+            if request.method not in ("GET", "HEAD", "OPTIONS"):
+                self.permission_denied(request)
+            return
+
+        # Company-scoped users can only access their own company
         user_company = getattr(request.user, "company_id_remote", None)
         if obj.id != user_company:
             self.permission_denied(request)
-        
-        # Only MANAGER can edit (MEMBER blocked by ManagerOrHigher permission)
-        # MANAGER can only edit their own company (already checked above)
+        # MANAGER can edit own company; MEMBER is blocked by ManagerOrHigher permission class
 
 
 class CompanyUsersView(generics.ListAPIView):

@@ -53,7 +53,7 @@ export function CompanyListPage(): React.JSX.Element {
                   Industry
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">
-                  Size
+                  Users
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">
                   Status
@@ -72,7 +72,9 @@ export function CompanyListPage(): React.JSX.Element {
                     </Link>
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-600">{c.industry || '—'}</td>
-                  <td className="px-4 py-3 text-sm text-gray-600">{c.company_size || '—'}</td>
+                  <td className="px-4 py-3 text-sm text-gray-600">
+                    {c.user_count ?? '—'}
+                  </td>
                   <td className="px-4 py-3">
                     <span
                       className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${statusBadgeClass(c.account_status)}`}

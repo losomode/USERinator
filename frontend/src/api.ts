@@ -2,6 +2,7 @@ import apiClient from '@inator/shared/api/client';
 import type {
   UserProfile,
   UpdateProfileInput,
+  CreateUserProfileInput,
   Company,
   UpdateCompanyInput,
   CreateCompanyInput,
@@ -9,6 +10,8 @@ import type {
   Invitation,
   CreateInvitationInput,
   UserPreferences,
+  CreateAuthUserInput,
+  CreatedAuthUser,
 } from './types';
 
 /** Paginated response from DRF. */
@@ -46,9 +49,39 @@ export const usersApi = {
     return response.data;
   },
 
+  delete: async (userId: number): Promise<void> => {
+    await apiClient.delete(`/users/${String(userId)}/`);
+  },
+
+  create: async (data: CreateUserProfileInput): Promise<UserProfile> => {
+    const response = await apiClient.post<UserProfile>('/users/', data);
+    return response.data;
+  },
+
   batch: async (userIds: number[]): Promise<UserProfile[]> => {
     const response = await apiClient.post<UserProfile[]>('/users/batch/', { user_ids: userIds });
     return response.data;
+  },
+};
+
+/** AUTHinator endpoints (called via /api/auth/ through the Caddy gateway). */
+export const authApi = {
+  changePassword: async (data: { current_password: string; new_password: string }): Promise<void> => {
+    await apiClient.post('/auth/change-password/', data);
+  },
+
+  changeUsername: async (data: { new_username: string; password: string }): Promise<{ username: string }> => {
+    const response = await apiClient.post<{ username: string }>('/auth/change-username/', data);
+    return response.data;
+  },
+
+  createUser: async (data: CreateAuthUserInput): Promise<CreatedAuthUser> => {
+    const response = await apiClient.post<CreatedAuthUser>('/auth/create-user/', data);
+    return response.data;
+  },
+
+  setUserPassword: async (data: { user_id: number; new_password: string }): Promise<void> => {
+    await apiClient.post('/auth/admin/set-password/', data);
   },
 };
 
@@ -100,13 +133,13 @@ export const invitationsApi = {
     return response.data.results;
   },
 
-  create: async (data: CreateInvitationInput): Promise<Invitation> => {
-    const response = await apiClient.post<Invitation>('/invitations/', data);
+  create: async (data: CreateInvitationInput): Promise<Invitation & { provisioned_user?: { username: string; temp_password: string; note: string } | null; provision_error?: string }> => {
+    const response = await apiClient.post<Invitation & { provisioned_user?: { username: string; temp_password: string; note: string } | null; provision_error?: string }>('/invitations/', data);
     return response.data;
   },
 
-  approve: async (id: number, reviewNotes?: string): Promise<Invitation> => {
-    const response = await apiClient.post<Invitation>(`/invitations/${String(id)}/approve/`, {
+  approve: async (id: number, reviewNotes?: string): Promise<Invitation & { provisioned_user?: unknown; provision_error?: string }> => {
+    const response = await apiClient.post<Invitation & { provisioned_user?: unknown; provision_error?: string }>(`/invitations/${String(id)}/approve/`, {
       review_notes: reviewNotes ?? '',
     });
     return response.data;

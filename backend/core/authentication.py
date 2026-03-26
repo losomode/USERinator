@@ -50,9 +50,12 @@ def _get_or_create_local_user(user_data):
 
 def _attach_userinator_attrs(user, user_data):
     """
-    Attach USERinator-specific attributes to the User instance.
+    Attach initial role/company attributes from AUTHinator token data.
 
-    These are used by permission classes and views without DB queries.
+    NOTE: AUTHinator only knows two roles: ADMIN and USER.  All fine-grained
+    USERinator roles (PLATFORM_ADMIN=100, COMPANY_MANAGER=30, etc.) are stored
+    in the UserProfile.  Call _enrich_from_userprofile() afterwards to override
+    these attrs with the authoritative values from the UserProfile.
     """
     user.role = user_data.get("role", "")
     user.role_level = user_data.get("role_level", 10)
@@ -61,6 +64,41 @@ def _attach_userinator_attrs(user, user_data):
     user.is_verified = user_data.get("is_verified", False)
     user.is_admin = user_data.get("role_level", 0) >= 100
     user.is_company_admin = user_data.get("role_level", 0) >= 30
+
+
+def _enrich_from_userprofile(user) -> None:
+    """Override role/company attrs from the USERinator UserProfile.
+
+    UserProfile is the single source of truth for role_level and company.
+    AUTHinator only carries a coarse ADMIN/USER distinction; every nuanced
+    role (PLATFORM_ADMIN, PLATFORM_MANAGER, COMPANY_MANAGER, …) lives here.
+
+    Falls back silently to AUTHinator-derived attrs when no active profile
+    exists yet (e.g. first request before auto-provision has run).
+    """
+    from users.models import UserProfile  # late import — avoids circular deps
+    from core.permissions import PLATFORM_ROLE_THRESHOLD
+
+    try:
+        profile = UserProfile.objects.select_related("company").get(
+            user_id=user.id, is_active=True
+        )
+    except UserProfile.DoesNotExist:
+        # Profile not provisioned yet — keep the AUTHinator-derived attrs.
+        return
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Failed to enrich user %s from UserProfile: %s", user.id, exc)
+        return
+
+    user.role = profile.role_name
+    user.role_level = profile.role_level
+    user.company_id_remote = profile.company_id if profile.company_id else None
+    user.company_name = profile.company.name if profile.company else None
+    user.is_admin = profile.role_level >= 100
+    user.is_company_admin = profile.role_level >= 30
+    user.is_platform_user = (
+        profile.role_level >= PLATFORM_ROLE_THRESHOLD and not profile.company_id
+    )
 
 
 class AuthinatorJWTAuthentication(authentication.BaseAuthentication):
@@ -97,6 +135,7 @@ class AuthinatorJWTAuthentication(authentication.BaseAuthentication):
 
         # Resolve a real DB user for ForeignKey relations
         user = _get_or_create_local_user(user_data)
-        _attach_userinator_attrs(user, user_data)
+        _attach_userinator_attrs(user, user_data)  # initial attrs from AUTHinator
+        _enrich_from_userprofile(user)              # override with authoritative USERinator data
 
         return (user, token)

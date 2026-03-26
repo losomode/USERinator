@@ -1,9 +1,18 @@
+/** Convert SCREAMING_SNAKE_CASE role names to Title Case: PLATFORM_ADMIN → Platform Admin */
+export function formatRoleName(name: string): string {
+  return name
+    .split('_')
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(' ');
+}
+
 /** User profile — mirrors Django UserProfile model. */
 export interface UserProfile {
   user_id: number;
   username: string;
   email: string;
-  company: number | { id: number; name: string };
+  company: number | { id: number; name: string } | null;
+  company_name?: string | null;
   display_name: string;
   avatar_url: string;
   phone: string;
@@ -53,6 +62,7 @@ export interface Company {
   notes: string;
   account_status: string;
   created_at: string;
+  user_count?: number;
 }
 
 /** Fields editable on a company. */
@@ -86,7 +96,9 @@ export interface Invitation {
   id: number;
   email: string;
   company: number;
+  company_name?: string;
   requested_role: number;
+  requested_role_name?: string;
   status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'EXPIRED';
   requested_at: string;
   message: string;
@@ -116,6 +128,33 @@ export interface CreateInvitationInput {
   company: number;
   requested_role: number;
   message?: string;
+}
+
+/** Input for creating a USERinator profile (admin-only). */
+export interface CreateUserProfileInput {
+  user_id: number;
+  username: string;
+  email: string;
+  company: number;
+  display_name?: string;
+  role_name: string;
+  role_level: number;
+}
+
+/** Input for creating an AUTHinator auth user. */
+export interface CreateAuthUserInput {
+  email: string;
+  username: string;
+  role?: 'ADMIN' | 'USER';
+  temp_password?: string;
+}
+
+/** Response from AUTHinator create-user endpoint. */
+export interface CreatedAuthUser {
+  id: number;
+  username: string;
+  email: string;
+  temp_password: string;
 }
 
 /** User preferences subset. */
