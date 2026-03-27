@@ -67,6 +67,16 @@ class CompanyCreateSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["id", "account_status", "created_at"]
 
+    def validate_website(self, value):
+        if value and not value.startswith(("http://", "https://")):
+            value = f"https://{value}"
+        return value
+
+    def validate_logo_url(self, value):
+        if value and not value.startswith(("http://", "https://")):
+            value = f"https://{value}"
+        return value
+
     def create(self, validated_data):
         validated_data["created_by"] = self.context["request"].user
         return super().create(validated_data)
@@ -91,3 +101,14 @@ class CompanyUpdateSerializer(serializers.ModelSerializer):
             "notes",
             "account_status",
         ]
+
+    def validate_website(self, value):
+        """Auto-prepend https:// if the user omitted the scheme."""
+        if value and not value.startswith(("http://", "https://")):
+            value = f"https://{value}"
+        return value
+
+    def validate_logo_url(self, value):
+        if value and not value.startswith(("http://", "https://")):
+            value = f"https://{value}"
+        return value
