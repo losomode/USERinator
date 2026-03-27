@@ -4,7 +4,7 @@ import { useAuth } from '@inator/shared/auth/AuthProvider';
 import type { Role, Company } from '../types';
 import { formatRoleName } from '../types';
 
-const PLATFORM_ROLE_THRESHOLD = 60;
+const PLATFORM_ROLE_THRESHOLD = 75;
 
 export function InvitationRequestPage(): React.JSX.Element {
   const { user } = useAuth();

@@ -15,8 +15,9 @@ company data but only ADMIN (>= 100) can modify it.
 from django.conf import settings
 from rest_framework.permissions import BasePermission
 
-# role_level threshold that separates platform users (no company) from company users
-PLATFORM_ROLE_THRESHOLD = 60
+# role_level threshold that separates platform users (no company) from company users.
+# Platform Manager (75) is the lowest platform role; anything below 75 is company-scoped.
+PLATFORM_ROLE_THRESHOLD = 75
 
 
 def is_platform_user(user) -> bool:

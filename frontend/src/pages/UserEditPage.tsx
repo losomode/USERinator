@@ -5,7 +5,7 @@ import { useAuth } from '@inator/shared/auth/AuthProvider';
 import type { UserProfile, Company, Role } from '../types';
 import { formatRoleName } from '../types';
 
-const PLATFORM_ROLE_THRESHOLD = 60;
+const PLATFORM_ROLE_THRESHOLD = 75;
 
 /** Admin fields that go beyond self-edit. */
 interface AdminEditForm {

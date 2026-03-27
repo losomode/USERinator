@@ -6,13 +6,12 @@ import type { Company, Role } from '../types';
 import { formatRoleName } from '../types';
 
 /** Threshold separating platform (no-company) roles from company-scoped roles. */
-const PLATFORM_ROLE_THRESHOLD = 60;
+const PLATFORM_ROLE_THRESHOLD = 75;
 
 /** Human-readable one-liner for platform role options. */
 function describePlatformRole(name: string): string {
   if (name === 'PLATFORM_ADMIN') return 'Full read/write access across all companies';
-  if (name === 'PLATFORM_MANAGER') return 'Full view across all companies, manager-level editing';
-  if (name === 'PLATFORM_MEMBER') return 'Read-only view across all companies';
+  if (name === 'PLATFORM_MANAGER') return 'Cross-company view access, observer-level editing';
   return 'Platform role — no company required';
 }
 

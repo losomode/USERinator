@@ -20,12 +20,6 @@ DEFAULT_ROLES = [
         "is_system_role": True,
     },
     {
-        "role_name": "PLATFORM_MEMBER",
-        "role_level": 60,
-        "description": "Platform member with cross-company read-only access. No company association.",
-        "is_system_role": True,
-    },
-    {
         "role_name": "COMPANY_ADMIN",
         "role_level": 50,
         "description": "Company administrator with elevated company access. Can manage managers and members, approve invitations, deactivate users up to manager level.",
@@ -45,12 +39,13 @@ DEFAULT_ROLES = [
     },
 ]
 
-# Minimum role level for platform (company-independent) users
-PLATFORM_ROLE_THRESHOLD = 60
+# Minimum role level for platform (company-independent) users.
+# PLATFORM_MANAGER (75) is the lowest platform role.
+PLATFORM_ROLE_THRESHOLD = 75
 
 
 class Command(BaseCommand):
-    help = "Create/update system roles: PLATFORM_ADMIN=100, PLATFORM_MANAGER=75, PLATFORM_MEMBER=60, COMPANY_MANAGER=30, COMPANY_MEMBER=10"
+    help = "Create/update system roles: PLATFORM_ADMIN=100, PLATFORM_MANAGER=75, COMPANY_ADMIN=50, COMPANY_MANAGER=30, COMPANY_MEMBER=10"
 
     def handle(self, *args, **options):
         """Upsert roles by level so that old names (ADMIN, MANAGER, MEMBER) get
