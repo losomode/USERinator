@@ -48,8 +48,15 @@ class Command(BaseCommand):
     help = "Create/update system roles: PLATFORM_ADMIN=100, PLATFORM_MANAGER=75, COMPANY_ADMIN=50, COMPANY_MANAGER=30, COMPANY_MEMBER=10"
 
     def handle(self, *args, **options):
-        """Upsert roles by level so that old names (ADMIN, MANAGER, MEMBER) get
-        renamed to the new canonical names on re-run."""
+        """Upsert roles by level and remove any stale system roles no longer in DEFAULT_ROLES."""
+        # Remove system roles that are no longer in DEFAULT_ROLES (e.g. removed PLATFORM_MEMBER)
+        canonical_levels = {r["role_level"] for r in DEFAULT_ROLES}
+        stale = Role.objects.filter(is_system_role=True).exclude(role_level__in=canonical_levels)
+        for role in stale:
+            self.stdout.write(
+                self.style.WARNING(f"  Removing stale system role: {role.role_name} (level {role.role_level})")
+            )
+            role.delete()
         from users.models import UserProfile
 
         created_count = 0
