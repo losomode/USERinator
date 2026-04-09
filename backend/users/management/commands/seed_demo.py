@@ -5,6 +5,7 @@ Creates companies and user profiles with role assignments.
 Idempotent — safe to run multiple times.
 """
 from django.core.management.base import BaseCommand
+from django.core.management import call_command
 from companies.models import Company
 from users.models import UserProfile
 from roles.models import Role
@@ -199,5 +200,11 @@ class Command(BaseCommand):
             else:
                 self.stdout.write(f'    ✓ {profile.display_name} - {role_display} @ {company_display} (updated)')
 
+        # Upgrade to the full 5-role hierarchy (PLATFORM_ADMIN=100, PLATFORM_MANAGER=75,
+        # COMPANY_ADMIN=50, COMPANY_MANAGER=30, COMPANY_MEMBER=10).
+        # This renames any simplified roles created above and updates all UserProfiles.
+        self.stdout.write('  Applying full role hierarchy...')
+        call_command('create_default_roles', stdout=self.stdout)
+
         self.stdout.write(self.style.SUCCESS('✅ USERinator: 4 companies, 12 users seeded'))
-        self.stdout.write('   Role levels: ADMIN=100, MANAGER=30, MEMBER=10')
+        self.stdout.write('   Role levels: PLATFORM_ADMIN=100, PLATFORM_MANAGER=75, COMPANY_ADMIN=50, COMPANY_MANAGER=30, COMPANY_MEMBER=10')
